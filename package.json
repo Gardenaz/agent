@@ -1,0 +1,26 @@
+{
+  "name": "@gardena/agent",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/graph.ts"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@langchain/core": "latest",
+    "@langchain/langgraph": "latest",
+    "@langchain/openai": "latest",
+    "openai": "^4.103.0",
+    "viem": "^2.31.4"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "@types/node": "^22.15.30"
+  }
+}
