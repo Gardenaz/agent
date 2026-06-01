@@ -1,3 +1,5 @@
-export function hashDecision(payload: string): string {
-  return `0x${Buffer.from(payload).toString("hex").slice(0, 64).padEnd(64, "0")}`
+import { keccak256, stringToHex } from "viem";
+
+export function hashDecision(payload: string): `0x${string}` {
+  return keccak256(stringToHex(payload));
 }
