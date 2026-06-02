@@ -9,6 +9,16 @@
       "reputationRegistry": "0xC2a58107725a773A21102f575104b869dAfFCb4d",
       "validationRegistry": "0x25863A08185bb82C7C363745702125800b4509da",
       "autopilotPolicy": "0xe04003396491954919a851fBbF90d87555cDdFEf"
+    },
+    "erc8004Registration": {
+      "agentId": 1,
+      "agentURI": "ipfs://bafkreidjyk53skf6uzizpmfqjozk62gtm3qv6jwsj4dbfyoqg6shelydd4",
+      "owner": "0x143974B30727F9856131BD6F37E64679aF5F0626",
+      "agentWallet": "0x143974B30727F9856131BD6F37E64679aF5F0626",
+      "blockNumber": 39428238,
+      "blockHash": "0x453f038dc79fd3f4c5cbc28597815684c1bfbf8bde4c6121db5395d667f7da57",
+      "gasUsed": 394741,
+      "effectiveGasPrice": 60000120000
     }
   },
   "abis": {
