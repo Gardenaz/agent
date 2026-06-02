@@ -14,8 +14,11 @@ export function loadDeploymentConfig(env: NodeJS.ProcessEnv = process.env): Depl
   const agentIdentity = readAddress("AGENT_IDENTITY_ADDRESS", env.AGENT_IDENTITY_ADDRESS)
   const decisionLog = readAddress("DECISION_LOG_ADDRESS", env.DECISION_LOG_ADDRESS)
   const riskPolicy = readAddress("RISK_POLICY_ADDRESS", env.RISK_POLICY_ADDRESS)
+  const reputationRegistry = readAddress("REPUTATION_REGISTRY_ADDRESS", env.REPUTATION_REGISTRY_ADDRESS)
+  const validationRegistry = readAddress("VALIDATION_REGISTRY_ADDRESS", env.VALIDATION_REGISTRY_ADDRESS)
+  const autopilotPolicy = readAddress("AUTOPILOT_POLICY_ADDRESS", env.AUTOPILOT_POLICY_ADDRESS)
 
-  const configured = [agentIdentity, decisionLog, riskPolicy].filter(Boolean).length
+  const configured = [agentIdentity, decisionLog, riskPolicy, reputationRegistry, validationRegistry, autopilotPolicy].filter(Boolean).length
   if (configured === 0) return undefined
   if (!agentIdentity || !decisionLog || !riskPolicy) {
     throw new Error("AGENT_IDENTITY_ADDRESS, DECISION_LOG_ADDRESS, and RISK_POLICY_ADDRESS must be configured together")
@@ -28,6 +31,9 @@ export function loadDeploymentConfig(env: NodeJS.ProcessEnv = process.env): Depl
       agentIdentity,
       decisionLog,
       riskPolicy,
+      reputationRegistry,
+      validationRegistry,
+      autopilotPolicy,
     },
   }
 }

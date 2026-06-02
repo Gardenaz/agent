@@ -42,6 +42,9 @@ export type ContractAddresses = {
   agentIdentity: `0x${string}`;
   decisionLog: `0x${string}`;
   riskPolicy: `0x${string}`;
+  reputationRegistry?: `0x${string}`;
+  validationRegistry?: `0x${string}`;
+  autopilotPolicy?: `0x${string}`;
 };
 
 export type DeploymentConfig = {
@@ -52,4 +55,74 @@ export type DeploymentConfig = {
 
 export type AgentContext = {
   deployment?: DeploymentConfig;
+  yieldOpportunities?: YieldOpportunity[];
+};
+
+export type YieldOpportunity = {
+  id: string;
+  strategyId: string;
+  protocol: string;
+  asset: string;
+  expectedApyBps: number;
+  riskLevel: RiskLevel;
+  liquidityUsd: number;
+  gasCostUsd: number;
+  confidence: number;
+  marketCondition: string;
+};
+
+export type ScoredYieldOpportunity = YieldOpportunity & {
+  score: number;
+  scoreBreakdown: {
+    apy: number;
+    riskPenalty: number;
+    gasPenalty: number;
+    liquidityPenalty: number;
+    confidenceBonus: number;
+  };
+};
+
+export type AutopilotPolicyInput = {
+  enabled: boolean;
+  paused: boolean;
+  maxTxAmount: number;
+  maxRiskLevel: RiskLevel;
+  rebalanceIntervalSeconds: number;
+  allowedProtocols: string[];
+};
+
+export type AutopilotIntent = {
+  user: `0x${string}`;
+  agentId: string;
+  amount: string;
+  riskPreference: RiskLevel;
+  mode: "autopilot";
+  currentStrategyId?: string;
+  minImprovementBps: number;
+  policy: AutopilotPolicyInput;
+};
+
+export type AutopilotAction =
+  | { kind: "rebalance"; reason: string; fromStrategyId?: string; toStrategyId: string; improvementBps: number }
+  | { kind: "hold"; reason: string; currentStrategyId?: string; improvementBps: number };
+
+export type AutopilotDecision = {
+  intent: AutopilotIntent;
+  market: { opportunities: YieldOpportunity[] };
+  rankedOpportunities: ScoredYieldOpportunity[];
+  selectedOpportunity: ScoredYieldOpportunity;
+  policy: PolicyDecision;
+  action: AutopilotAction;
+  decisionHash: `0x${string}`;
+  summary: string;
+  createdAt: string;
+  deployment?: DeploymentConfig;
+  erc8004: {
+    agentId: string;
+    registries: {
+      reputationRegistry?: `0x${string}`;
+      validationRegistry?: `0x${string}`;
+      autopilotPolicy?: `0x${string}`;
+    };
+  };
 };
