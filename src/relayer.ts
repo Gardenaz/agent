@@ -85,3 +85,47 @@ export async function anchorDecision(decision: AutopilotDecision): Promise<Ancho
 
   return { enabled: true, txHash, note: "DecisionLog transaction sent by backend relayer", mode: "sent" };
 }
+
+export async function relayRawTx(params: {
+  to: `0x${string}`;
+  data: `0x${string}`;
+  value?: bigint;
+  chainId?: number;
+}): Promise<{ txHash: `0x${string}` }> {
+  const privateKey = process.env.RELAYER_PRIVATE_KEY as `0x${string}` | undefined;
+  if (!privateKey) throw new Error("RELAYER_PRIVATE_KEY required for raw tx relay");
+  const account = privateKeyToAccount(privateKey);
+  const chain = chainFor(params.chainId ?? 5003);
+  const rpcUrl = process.env.MANTLE_MAINNET_RPC_URL ?? process.env.MANTLE_RPC_URL ?? process.env.RPC_URL;
+  const wallet = createWalletClient({ account, chain, transport: http(rpcUrl) });
+  const txHash = await wallet.sendTransaction({
+    to: params.to,
+    data: params.data,
+    value: params.value ?? 0n,
+    chain,
+    account,
+  });
+  return { txHash };
+}
+
+export async function relayApproval(params: {
+  tokenAddress: `0x${string}`;
+  spender: `0x${string}`;
+  amount: bigint;
+  chainId?: number;
+}): Promise<{ txHash: `0x${string}` }> {
+  const privateKey = process.env.RELAYER_PRIVATE_KEY as `0x${string}` | undefined;
+  if (!privateKey) throw new Error("RELAYER_PRIVATE_KEY required for approval");
+  const account = privateKeyToAccount(privateKey);
+  const chain = chainFor(params.chainId ?? 5003);
+  const rpcUrl = process.env.MANTLE_MAINNET_RPC_URL ?? process.env.MANTLE_RPC_URL ?? process.env.RPC_URL;
+  const wallet = createWalletClient({ account, chain, transport: http(rpcUrl) });
+  const erc20ApproveAbi = [{ type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ name: "", type: "bool" }] }] as const;
+  const txHash = await wallet.writeContract({
+    address: params.tokenAddress,
+    abi: erc20ApproveAbi,
+    functionName: "approve",
+    args: [params.spender, params.amount],
+  });
+  return { txHash };
+}
