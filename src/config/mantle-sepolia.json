@@ -18,7 +18,11 @@
       "blockNumber": 39428238,
       "blockHash": "0x453f038dc79fd3f4c5cbc28597815684c1bfbf8bde4c6121db5395d667f7da57",
       "gasUsed": 394741,
-      "effectiveGasPrice": 60000120000
+      "effectiveGasPrice": 60000120000,
+      "updatedBlockNumber": 39428938,
+      "updatedBlockHash": "0xcb1d7e712112255ceeeb86f9cc7289dfd6edb9be013661bd52fe8af56baf7d59",
+      "updatedGasUsed": 66725,
+      "updatedEffectiveGasPrice": 50000100000
     }
   },
   "abis": {
