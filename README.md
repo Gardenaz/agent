@@ -304,6 +304,7 @@ RELAYER_ENABLED=true
 RELAYER_PRIVATE_KEY=
 MANTLE_RPC_URL=https://rpc.sepolia.mantle.xyz
 DECISION_LOG_ADDRESS=0x4f38D23639a1E8644c64b262d2E4f09d22c5aC7c
+AGENT_URI=ipfs://bafkreidjyk53skf6uzizpmfqjozk62gtm3qv6jwsj4dbfyoqg6shelydd4
 
 EXECUTION_ENABLED=false
 EXECUTION_SEND_TX=false
