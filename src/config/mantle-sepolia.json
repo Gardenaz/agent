@@ -3,12 +3,12 @@
     "chainId": 5003,
     "network": "mantle-sepolia",
     "contracts": {
-      "agentIdentity": "0x95e48FE293157b5Fe4A5C86a7A030A7C4eeE666d",
-      "decisionLog": "0x8D043763E137f47B82E0Bf7a4Efd229a263E7cfB",
-      "riskPolicy": "0xB383e3e55b10bD3a83D1B48704a215305d291970",
-      "reputationRegistry": "0x9620bf7843852e22eb903Fd3954E45F39cD96C22",
-      "validationRegistry": "0xaf4A24C70B89e80a437E15989cc1C08572C18511",
-      "autopilotPolicy": "0xE154Bf4d52DD367E33DB701aA290cF0Cd2fd4Ed2"
+      "agentIdentity": "0xfAc7E0Ecb4BdFB5CabDf0A4A8f9930E547771271",
+      "decisionLog": "0x4f38D23639a1E8644c64b262d2E4f09d22c5aC7c",
+      "riskPolicy": "0x73132c590b323B37344d52C9adaDA2dA939896d3",
+      "reputationRegistry": "0xC2a58107725a773A21102f575104b869dAfFCb4d",
+      "validationRegistry": "0x25863A08185bb82C7C363745702125800b4509da",
+      "autopilotPolicy": "0xe04003396491954919a851fBbF90d87555cDdFEf"
     }
   },
   "abis": {
