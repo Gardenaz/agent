@@ -30,7 +30,9 @@ describe("Gardena LangGraph agent", () => {
 
     const state = await graph.invoke({ intent: baseIntent, deployment: context.deployment });
 
-    assert.equal(state.plan?.strategyId, "steady-lend-usdc");
+    assert.equal(state.plan?.strategyId, "steady-rwa-usdy");
+    assert.equal(state.plan?.asset, "USDY");
+    assert.equal(state.plan?.title, "Rice / Safe Harvest");
     assert.equal(state.policy?.status, "approved");
     assert.match(state.decisionHash ?? "", /^0x[0-9a-f]{64}$/);
     assert.equal(state.decision?.summary, state.summary);

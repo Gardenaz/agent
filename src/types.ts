@@ -69,6 +69,9 @@ export type YieldOpportunity = {
   gasCostUsd: number;
   confidence: number;
   marketCondition: string;
+  consumerTheme?: string;
+  trackFit?: "AI x RWA" | "Consumer & Viral DApps" | "Agentic Wallets & Economy";
+  shareLabel?: string;
 };
 
 export type ScoredYieldOpportunity = YieldOpportunity & {
@@ -124,5 +127,10 @@ export type AutopilotDecision = {
       validationRegistry?: `0x${string}`;
       autopilotPolicy?: `0x${string}`;
     };
+  };
+  track: {
+    primary: "AI x RWA";
+    secondary: "Consumer & Viral DApps";
+    support: "Agentic Wallets & Economy";
   };
 };

@@ -123,4 +123,28 @@ describe("Gardena autopilot LangGraph", () => {
     assert.equal(state.selectedOpportunity?.strategyId, "growth-lp-usdc-meth");
     assert.equal(state.decision?.action.kind, "rebalance");
   });
+
+  it("defaults to AI x RWA opportunities with USDY and mETH consumer garden metadata", async () => {
+    const decision = await runAutopilotTick({
+      ...baseIntent,
+      currentStrategyId: "steady-rwa-usdy",
+      policy: {
+        ...baseIntent.policy,
+        allowedProtocols: ["Mantle RWA USDY Route", "Mantle mETH Yield Route"],
+      },
+    });
+
+    const assets = decision.market.opportunities.map((opportunity) => opportunity.asset);
+    const protocols = decision.market.opportunities.map((opportunity) => opportunity.protocol);
+    const themes = decision.market.opportunities.map((opportunity) => opportunity.consumerTheme);
+
+    assert.ok(assets.includes("USDY"));
+    assert.ok(assets.includes("mETH"));
+    assert.ok(protocols.includes("Mantle RWA USDY Route"));
+    assert.ok(protocols.includes("Mantle mETH Yield Route"));
+    assert.ok(themes.includes("Rice / Safe Harvest"));
+    assert.ok(themes.includes("Corn / Growth Field"));
+    assert.equal(decision.track.primary, "AI x RWA");
+    assert.equal(decision.track.secondary, "Consumer & Viral DApps");
+  });
 });
