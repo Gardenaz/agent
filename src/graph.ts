@@ -1,22 +1,94 @@
+import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
+import { loadDeploymentConfig } from "./config/contracts";
+import { hashDecision } from "./nodes/log";
 import { planStrategy } from "./nodes/plan";
 import { policyCheck } from "./nodes/policy";
-import { hashDecision } from "./nodes/log";
-import { loadDeploymentConfig } from "./config/contracts";
-import type { AgentContext, AgentDecision, AgentIntent } from "./types";
+import type { AgentContext, AgentDecision, AgentIntent, AgentPlan, DeploymentConfig, PolicyDecision } from "./types";
 
-export function runAgent(intent: AgentIntent, context: AgentContext = { deployment: loadDeploymentConfig() }): AgentDecision {
-  const plan = planStrategy(intent);
-  const policy = policyCheck({ intent, plan });
-  const createdAt = new Date().toISOString();
+export const AgentStateAnnotation = Annotation.Root({
+  intent: Annotation<AgentIntent>,
+  deployment: Annotation<DeploymentConfig | undefined>,
+  plan: Annotation<AgentPlan | undefined>,
+  policy: Annotation<PolicyDecision | undefined>,
+  summary: Annotation<string | undefined>,
+  createdAt: Annotation<string | undefined>,
+  decisionHash: Annotation<`0x${string}` | undefined>,
+  decision: Annotation<AgentDecision | undefined>,
+});
+
+export type AgentGraphState = typeof AgentStateAnnotation.State;
+export type AgentGraphUpdate = typeof AgentStateAnnotation.Update;
+
+function planNode(state: AgentGraphState): AgentGraphUpdate {
+  return { plan: planStrategy(state.intent) };
+}
+
+function policyNode(state: AgentGraphState): AgentGraphUpdate {
+  if (!state.plan) {
+    throw new Error("Agent graph policy node requires a strategy plan");
+  }
+
+  const policy = policyCheck({ intent: state.intent, plan: state.plan });
   const summary = policy.allow
-    ? `${plan.title} approved for ${intent.amount} ${plan.asset}. ${plan.explanation}`
-    : `${plan.title} blocked. ${policy.reason}`;
+    ? `${state.plan.title} approved for ${state.intent.amount} ${state.plan.asset}. ${state.plan.explanation}`
+    : `${state.plan.title} blocked. ${policy.reason}`;
+
+  return { policy, summary, createdAt: new Date().toISOString() };
+}
+
+function logNode(state: AgentGraphState): AgentGraphUpdate {
+  if (!state.plan || !state.policy || !state.summary || !state.createdAt) {
+    throw new Error("Agent graph log node requires plan, policy, summary, and createdAt state");
+  }
 
   const decisionHash = hashDecision(
-    JSON.stringify({ intent, plan, policy, deployment: context.deployment, createdAt }),
+    JSON.stringify({
+      intent: state.intent,
+      plan: state.plan,
+      policy: state.policy,
+      deployment: state.deployment,
+      createdAt: state.createdAt,
+    }),
   );
 
-  return { intent, plan, policy, decisionHash, summary, createdAt, deployment: context.deployment };
+  const decision: AgentDecision = {
+    intent: state.intent,
+    plan: state.plan,
+    policy: state.policy,
+    decisionHash,
+    summary: state.summary,
+    createdAt: state.createdAt,
+    deployment: state.deployment,
+  };
+
+  return { decisionHash, decision };
+}
+
+export function createAgentGraph() {
+  return new StateGraph(AgentStateAnnotation)
+    .addNode("plan_step", planNode)
+    .addNode("policy_step", policyNode)
+    .addNode("log_step", logNode)
+    .addEdge(START, "plan_step")
+    .addEdge("plan_step", "policy_step")
+    .addEdge("policy_step", "log_step")
+    .addEdge("log_step", END)
+    .compile();
+}
+
+export const agentGraph = createAgentGraph();
+
+export async function runAgent(
+  intent: AgentIntent,
+  context: AgentContext = { deployment: loadDeploymentConfig() },
+): Promise<AgentDecision> {
+  const state = await agentGraph.invoke({ intent, deployment: context.deployment });
+
+  if (!state.decision) {
+    throw new Error("Agent graph completed without producing a decision");
+  }
+
+  return state.decision;
 }
 
 export type { AgentDecision, AgentIntent } from "./types";
