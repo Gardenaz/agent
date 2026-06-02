@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { runAutopilotTick } from "./autopilot";
 import { loadDeploymentConfig } from "./config/contracts";
-import { anchorDecision } from "./relayer";
+import { anchorDecision, recordDecisionOutcome } from "./relayer";
 import { executeRealRoute } from "./execution";
 import { logger } from "./logger";
 import type { AutopilotIntent, AutopilotPolicyInput, RiskLevel } from "./types";
@@ -121,8 +121,20 @@ export function createAgentService() {
             slippageBps: body.slippageBps,
             userAddr: body.user,
           })
-        : { enabled: false, mode: "disabled", note: "request execute=false" };
-      res.end(JSON.stringify({ ok: true, decision: { ...decision, anchorTxHash: anchor.txHash ?? undefined }, anchor, execution, source: "agent-service" }));
+        : ({ enabled: false, mode: "disabled", note: "request execute=false" } as const);
+      const outcome = execution.enabled && execution.mode === "sent" && decision.deployment?.contracts.decisionLog
+        ? await recordDecisionOutcome({
+            decisionLog: decision.deployment.contracts.decisionLog,
+            decisionHash: decision.decisionHash,
+            executionTxHash: execution.executionTxHash,
+            inputAmount: BigInt(execution.plan.inputAmount || "0"),
+            outputAmount: BigInt(execution.plan.expectedOutput || "0"),
+            success: true,
+            metadataURI: `gardena://outcomes/${decision.decisionHash}`,
+            chainId: decision.deployment.chainId,
+          })
+        : null;
+      res.end(JSON.stringify({ ok: true, decision: { ...decision, anchorTxHash: anchor.txHash ?? undefined }, anchor, execution, outcome, source: "agent-service" }));
     } catch (error) {
       res.statusCode = 400;
       res.end(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : "invalid request" }));

@@ -18,6 +18,22 @@ const DECISION_LOG_ABI: any = [
     ],
     outputs: [{ name: "", type: "uint256" }],
   },
+  {
+    type: "function",
+    name: "recordOutcomeForHash",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "decisionHash", type: "bytes32" },
+      { name: "executionTxHash", type: "bytes32" },
+      { name: "pnlBps", type: "int256" },
+      { name: "realizedApyBps", type: "uint256" },
+      { name: "inputAmount", type: "uint256" },
+      { name: "outputAmount", type: "uint256" },
+      { name: "success", type: "bool" },
+      { name: "metadataURI", type: "string" },
+    ],
+    outputs: [],
+  },
 ] as const;
 
 export type AnchorResult =
@@ -84,6 +100,42 @@ export async function anchorDecision(decision: AutopilotDecision): Promise<Ancho
   });
 
   return { enabled: true, txHash, note: "DecisionLog transaction sent by backend relayer", mode: "sent" };
+}
+
+export async function recordDecisionOutcome(params: {
+  decisionLog: `0x${string}`;
+  decisionHash: `0x${string}`;
+  executionTxHash: `0x${string}`;
+  inputAmount: bigint;
+  outputAmount: bigint;
+  pnlBps?: bigint;
+  realizedApyBps?: bigint;
+  success: boolean;
+  metadataURI?: string;
+  chainId?: number;
+}): Promise<{ txHash: `0x${string}` }> {
+  const privateKey = process.env.RELAYER_PRIVATE_KEY as `0x${string}` | undefined;
+  if (!privateKey) throw new Error("RELAYER_PRIVATE_KEY required for outcome recording");
+  const account = privateKeyToAccount(privateKey);
+  const chain = chainFor(params.chainId ?? 5003);
+  const rpcUrl = process.env.MANTLE_RPC_URL ?? process.env.RPC_URL;
+  const wallet = createWalletClient({ account, chain, transport: http(rpcUrl) });
+  const txHash = await wallet.writeContract({
+    address: params.decisionLog,
+    abi: DECISION_LOG_ABI,
+    functionName: "recordOutcomeForHash",
+    args: [
+      params.decisionHash,
+      params.executionTxHash,
+      params.pnlBps ?? 0n,
+      params.realizedApyBps ?? 0n,
+      params.inputAmount,
+      params.outputAmount,
+      params.success,
+      params.metadataURI ?? "",
+    ],
+  });
+  return { txHash };
 }
 
 export async function relayRawTx(params: {
