@@ -181,24 +181,24 @@ export function createAgentService() {
       const anchor = body.anchor === false ? { enabled: false, txHash: null, note: "anchor disabled by request" } : await anchorDecision(decision);
       const execution = body.execute
         ? await executeRealRoute({
-            inputAsset: body.inputAsset ?? (decision.selectedOpportunity.asset === "mETH" ? "mETH" : "USDY"),
-            outputAsset: body.outputAsset ?? (decision.selectedOpportunity.asset === "mETH" ? "USDY" : "mETH"),
-            inputAmount: body.inputAmount ?? body.amount,
-            slippageBps: body.slippageBps,
-            userAddr: body.user,
-          })
+          inputAsset: body.inputAsset ?? (decision.selectedOpportunity.asset === "mETH" ? "mETH" : "USDY"),
+          outputAsset: body.outputAsset ?? (decision.selectedOpportunity.asset === "mETH" ? "USDY" : "mETH"),
+          inputAmount: body.inputAmount ?? body.amount,
+          slippageBps: body.slippageBps,
+          userAddr: body.user,
+        })
         : ({ enabled: false, mode: "disabled", note: "request execute=false" } as const);
       const outcome = execution.enabled && execution.mode === "sent" && decision.deployment?.contracts.decisionLog
         ? await recordDecisionOutcome({
-            decisionLog: decision.deployment.contracts.decisionLog,
-            decisionHash: decision.decisionHash,
-            executionTxHash: execution.executionTxHash,
-            inputAmount: BigInt(execution.plan.inputAmount || "0"),
-            outputAmount: BigInt(execution.plan.expectedOutput || "0"),
-            success: true,
-            metadataURI: `gardena://outcomes/${decision.decisionHash}`,
-            chainId: decision.deployment.chainId,
-          })
+          decisionLog: decision.deployment.contracts.decisionLog,
+          decisionHash: decision.decisionHash,
+          executionTxHash: execution.executionTxHash,
+          inputAmount: BigInt(execution.plan.inputAmount || "0"),
+          outputAmount: BigInt(execution.plan.expectedOutput || "0"),
+          success: true,
+          metadataURI: `gardena://outcomes/${decision.decisionHash}`,
+          chainId: decision.deployment.chainId,
+        })
         : null;
       res.end(JSON.stringify({ ok: true, decision: { ...decision, anchorTxHash: anchor.txHash ?? undefined }, anchor, execution, outcome, source: "agent-service" }));
     } catch (error) {
@@ -208,11 +208,8 @@ export function createAgentService() {
   });
 }
 
-const isEntrypoint = process.argv[1] ? import.meta.url === new URL(process.argv[1], "file://").href : false;
+const port = Number(process.env.PORT ?? 8787);
 
-if (isEntrypoint) {
-  const port = Number(process.env.PORT ?? 8787);
-  createAgentService().listen(port, () => {
-    logger.info({ port }, "Gardena agent service listening");
-  });
-}
+createAgentService().listen(port, () => {
+  logger.info({ port }, "Gardena agent service listening");
+});

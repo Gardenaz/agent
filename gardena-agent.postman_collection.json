@@ -1,0 +1,144 @@
+{
+  "info": {
+    "name": "Gardena Agent",
+    "description": "Gardena AI Agent - Autopilot DeFi Yield Optimizer on Mantle",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8787",
+      "type": "string"
+    },
+    {
+      "key": "userAddress",
+      "value": "0x1111111111111111111111111111111111111111",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/health",
+            "description": "Check if the agent service is up and running"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Autopilot Plan",
+      "item": [
+        {
+          "name": "Plan - Steady (Safe, Rice)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/autopilot/plan",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user\": \"{{userAddress}}\",\n  \"amount\": \"1000\",\n  \"riskPreference\": 1,\n  \"crop\": \"steady\",\n  \"anchor\": false\n}"
+            },
+            "description": "Low-risk USDY RWA route. riskPreference=1, crop=steady. Policy will allow protocols with risk ≤ 1."
+          }
+        },
+        {
+          "name": "Plan - Growth (Moderate, Corn)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/autopilot/plan",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user\": \"{{userAddress}}\",\n  \"amount\": \"2000\",\n  \"riskPreference\": 2,\n  \"crop\": \"growth\",\n  \"anchor\": false\n}"
+            },
+            "description": "Medium-risk mETH yield route. riskPreference=2, crop=growth."
+          }
+        },
+        {
+          "name": "Plan - Boost (High, Chili)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/autopilot/plan",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user\": \"{{userAddress}}\",\n  \"amount\": \"500\",\n  \"riskPreference\": 3,\n  \"crop\": \"boost\",\n  \"anchor\": false\n}"
+            },
+            "description": "High-risk dynamic RWA+mETH route. riskPreference=3, crop=boost."
+          }
+        },
+        {
+          "name": "Plan - Custom Policy",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/autopilot/plan",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user\": \"{{userAddress}}\",\n  \"amount\": \"3000\",\n  \"riskPreference\": 2,\n  \"crop\": \"growth\",\n  \"minImprovementBps\": 100,\n  \"policy\": {\n    \"enabled\": true,\n    \"paused\": false,\n    \"maxTxAmount\": 5000,\n    \"maxRiskLevel\": 2,\n    \"rebalanceIntervalSeconds\": 1800,\n    \"allowedProtocols\": [\n      \"Mantle RWA USDY Route\",\n      \"Mantle mETH Yield Route\"\n    ]\n  },\n  \"anchor\": false\n}"
+            },
+            "description": "Custom policy: only allow USDY and mETH routes, min improvement 100 bps, max tx 5000."
+          }
+        },
+        {
+          "name": "Plan - Policy Blocked (paused)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/autopilot/plan",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user\": \"{{userAddress}}\",\n  \"amount\": \"1000\",\n  \"riskPreference\": 2,\n  \"crop\": \"growth\",\n  \"policy\": {\n    \"paused\": true\n  },\n  \"anchor\": false\n}"
+            },
+            "description": "Simulates a paused policy — action should be 'hold', policy.allow = false."
+          }
+        },
+        {
+          "name": "Plan - Policy Blocked (amount exceeded)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/autopilot/plan",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user\": \"{{userAddress}}\",\n  \"amount\": \"99999\",\n  \"riskPreference\": 2,\n  \"crop\": \"growth\",\n  \"policy\": {\n    \"maxTxAmount\": 1000\n  },\n  \"anchor\": false\n}"
+            },
+            "description": "Amount exceeds maxTxAmount — should be blocked by policy."
+          }
+        },
+        {
+          "name": "Plan - With Anchor (on-chain log)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/autopilot/plan",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user\": \"{{userAddress}}\",\n  \"amount\": \"1000\",\n  \"riskPreference\": 1,\n  \"crop\": \"steady\"\n}"
+            },
+            "description": "anchor defaults to true — will attempt to log decision on-chain via relayer. Requires RELAYER_ENABLED=true in .env."
+          }
+        }
+      ]
+    }
+  ]
+}
