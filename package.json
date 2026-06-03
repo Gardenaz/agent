@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/graph.ts",
     "./server": "./src/server.ts",
-    "./relayer": "./src/relayer.ts"
+    "./relayer": "./src/relayer.ts",
+    "./garden-agent": "./src/garden-agent.ts"
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",

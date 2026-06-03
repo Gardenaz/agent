@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { runAutopilotTick } from "./autopilot";
+import { plantGarden, type GardenRequest } from "./garden-agent";
 import { loadDeploymentConfig } from "./config/contracts";
 import { anchorDecision, recordDecisionOutcome } from "./relayer";
 import { executeRealRoute } from "./execution";
@@ -23,6 +24,11 @@ type PlanRequest = {
   outputAsset?: string;
   inputAmount?: string;
   slippageBps?: number;
+};
+
+type GardenPlanRequest = PlanRequest & {
+  message?: string;
+  userMaxRiskLevel?: RiskLevel;
 };
 
 function currentStrategyFromCrop(crop: PlanRequest["crop"]): string {
@@ -52,6 +58,45 @@ export function buildIntent(body: PlanRequest): AutopilotIntent {
   };
 }
 
+export function buildGardenRequest(body: GardenPlanRequest): GardenRequest {
+  const riskPreference = Number(body.userMaxRiskLevel ?? body.riskPreference ?? 1) as RiskLevel;
+  return {
+    user: body.user,
+    message: body.message ?? `${body.crop ?? "steady"} ${body.amount ?? "0"}`,
+    amount: String(body.amount ?? "0"),
+    userMaxRiskLevel: riskPreference,
+    execute: body.execute ?? false,
+  };
+}
+
+function toGardenResponse(result: Awaited<ReturnType<typeof plantGarden>>) {
+  return {
+    intent: {
+      user: result.intent.user,
+      message: result.parsedIntent.message,
+      parsedStrategy: result.parsedIntent.crop,
+    },
+    marketMood: result.marketMood,
+    simulation: {
+      crop: result.gardenSimulation.crop,
+      weather: result.marketMood.weather,
+      background: result.gardenSimulation.background,
+      actionLabel: result.gardenSimulation.actionLabel,
+      potSlots: result.gardenSimulation.potSlots.map((slot) => ({
+        strategyId: slot.id,
+        title: slot.label,
+        crop: slot.label.split(" /")[0] ?? slot.label,
+        apy: Number.parseFloat(slot.apy),
+        health: slot.health,
+        selected: slot.active,
+      })),
+    },
+    beginnerExplanation: result.beginnerExplanation,
+    effectivePolicy: result.effectivePolicy,
+    decision: result,
+  };
+}
+
 async function readJson(req: import("node:http").IncomingMessage) {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(Buffer.from(chunk));
@@ -70,6 +115,7 @@ export function createAgentService() {
         ok: true,
         tools: [
           { name: "plan_autopilot_strategy", description: "Run LangGraph AI advisor + deterministic policy planner" },
+          { name: "plan_garden_agent", description: "Translate beginner game intent into garden weather, crop slots, and safe agent plan" },
           { name: "quote_rwa_route", description: "Quote a real Mantle mainnet USDY/mETH route through Odos" },
           { name: "execute_rwa_route", description: "Prepare or send a guarded real Odos transaction" },
           { name: "log_decision", description: "Anchor agent decision to DecisionLog" },
@@ -83,6 +129,12 @@ export function createAgentService() {
       if (body.name === "plan_autopilot_strategy") {
         const decision = await runAutopilotTick(buildIntent(body.arguments ?? ({} as PlanRequest)), { deployment: loadDeploymentConfig() });
         res.end(JSON.stringify({ ok: true, result: decision }));
+        return;
+      }
+      if (body.name === "plan_garden_agent") {
+        const result = await plantGarden(buildGardenRequest(body.arguments ?? ({} as GardenPlanRequest)), { deployment: loadDeploymentConfig() });
+        const garden = toGardenResponse(result);
+        res.end(JSON.stringify({ ok: true, result: garden }));
         return;
       }
       if (body.name === "quote_rwa_route" || body.name === "execute_rwa_route") {
@@ -99,6 +151,20 @@ export function createAgentService() {
       }
       res.statusCode = 400;
       res.end(JSON.stringify({ ok: false, error: "unknown tool" }));
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/garden/plan") {
+      try {
+        const body = (await readJson(req)) as GardenPlanRequest;
+        logger.info({ user: body.user, amount: body.amount, execute: body.execute ?? false }, "garden plan requested");
+        const result = await plantGarden(buildGardenRequest(body), { deployment: loadDeploymentConfig() });
+        const garden = toGardenResponse(result);
+        res.end(JSON.stringify({ ok: true, garden, result: garden, source: "garden-agent" }));
+      } catch (error) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : "invalid request" }));
+      }
       return;
     }
 
