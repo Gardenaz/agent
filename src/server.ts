@@ -31,10 +31,95 @@ type GardenPlanRequest = PlanRequest & {
   userMaxRiskLevel?: RiskLevel;
 };
 
+type GardenChatRequest = {
+  message: string;
+  context?: unknown;
+  view?: "canvas" | "shop" | "audit";
+  user?: `0x${string}`;
+};
+
 function currentStrategyFromCrop(crop: PlanRequest["crop"]): string {
   if (crop === "growth") return "growth-meth-yield";
   if (crop === "boost") return "boost-rwa-meth-dynamic";
   return "steady-rwa-usdy";
+}
+
+function fallbackAssistantReply(request: GardenChatRequest): string {
+  const context = request.context as
+    | {
+        marketLabel?: string;
+        weatherReason?: string;
+        gUsdBalance?: string;
+        positionCount?: number;
+        latestDecision?: string | null;
+        activePositions?: Array<{ title: string; value: string; status: string }>;
+        seedCatalog?: Array<{ name: string; price: string; returnLabel: string }>;
+      }
+    | undefined;
+
+  const text = request.message.toLowerCase();
+  if (/(balance|saldo|gusd|usd)/.test(text) && context?.gUsdBalance) {
+    return `Your current gUSD balance is ${context.gUsdBalance}.`;
+  }
+  if (/(position|posisi|pot|portfolio)/.test(text) && context?.positionCount !== undefined) {
+    const summary = context.activePositions?.slice(0, 2).map((item) => `${item.title} (${item.value}, ${item.status})`).join("; ");
+    return context.positionCount > 0
+      ? `You have ${context.positionCount} onchain positions. ${summary ?? ""}`.trim()
+      : "You do not have an active onchain position yet. Open the Seed shop to plant one.";
+  }
+  if (/(audit|proof|hash|decision|tx|history|log)/.test(text) && context?.latestDecision) {
+    return `Audit room active. Latest decision: ${context.latestDecision}`;
+  }
+  if (/(seed|shop|price|return|apy|crop)/.test(text) && context?.seedCatalog?.length) {
+    const seedSummary = context.seedCatalog.map((seed) => `${seed.name} ${seed.price} / ${seed.returnLabel}`).join(" | ");
+    return `The seed shop includes: ${seedSummary}.`;
+  }
+
+  return [
+    "I am Pak Tani, your Gardenaz assistant.",
+    request.view ? `Current view: ${request.view}.` : null,
+    context?.marketLabel ? `Market: ${context.marketLabel}.` : null,
+    context?.weatherReason ? context.weatherReason : null,
+    "Ask me about balance, positions, market weather, seed shop pricing, or audit proof.",
+  ].filter(Boolean).join(" ");
+}
+
+async function callOpenAiAssistant(request: GardenChatRequest): Promise<string | undefined> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return undefined;
+
+  const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+  const response = await fetch(process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.3,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are Pak Tani, an English-only assistant for the Gardenaz AI x RWA app. Answer clearly and concisely using the provided context. Do not invent onchain facts. If the user asks about actions, explain the next step and mention the relevant tab or action. If data is missing, say what is missing. Keep the answer short and helpful.",
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            message: request.message,
+            view: request.view,
+            context: request.context,
+          }),
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) return undefined;
+  const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const content = data.choices?.[0]?.message?.content?.trim();
+  return content || undefined;
 }
 
 export function buildIntent(body: PlanRequest): AutopilotIntent {
@@ -116,6 +201,7 @@ export function createAgentService() {
         tools: [
           { name: "plan_autopilot_strategy", description: "Run LangGraph AI advisor + deterministic policy planner" },
           { name: "plan_garden_agent", description: "Translate beginner game intent into garden weather, crop slots, and safe agent plan" },
+          { name: "ask_garden_assistant", description: "Answer user questions about the Gardenaz page context, positions, proof, and seed shop" },
           { name: "quote_rwa_route", description: "Quote a real Mantle mainnet USDY/mETH route through Odos" },
           { name: "execute_rwa_route", description: "Prepare or send a guarded real Odos transaction" },
           { name: "log_decision", description: "Anchor agent decision to DecisionLog" },
@@ -125,7 +211,7 @@ export function createAgentService() {
     }
 
     if (req.method === "POST" && req.url === "/mcp/tools/call") {
-      const body = (await readJson(req)) as { name: string; arguments?: PlanRequest };
+      const body = (await readJson(req)) as { name: string; arguments?: Record<string, unknown> };
       if (body.name === "plan_autopilot_strategy") {
         const decision = await runAutopilotTick(buildIntent(body.arguments ?? ({} as PlanRequest)), { deployment: loadDeploymentConfig() });
         res.end(JSON.stringify({ ok: true, result: decision }));
@@ -135,6 +221,22 @@ export function createAgentService() {
         const result = await plantGarden(buildGardenRequest(body.arguments ?? ({} as GardenPlanRequest)), { deployment: loadDeploymentConfig() });
         const garden = toGardenResponse(result);
         res.end(JSON.stringify({ ok: true, result: garden }));
+        return;
+      }
+      if (body.name === "ask_garden_assistant") {
+        const assistantArgs = body.arguments ?? {};
+        const answer = (await callOpenAiAssistant({
+          message: String(assistantArgs.message ?? ""),
+          context: assistantArgs.context,
+          view: assistantArgs.view as "canvas" | "shop" | "audit" | undefined,
+          user: assistantArgs.user as `0x${string}` | undefined,
+        })) ?? fallbackAssistantReply({
+          message: String(assistantArgs.message ?? ""),
+          context: assistantArgs.context,
+          view: assistantArgs.view as "canvas" | "shop" | "audit" | undefined,
+          user: assistantArgs.user as `0x${string}` | undefined,
+        });
+        res.end(JSON.stringify({ ok: true, result: { answer, source: "agent-service" } }));
         return;
       }
       if (body.name === "quote_rwa_route" || body.name === "execute_rwa_route") {
@@ -160,7 +262,20 @@ export function createAgentService() {
         logger.info({ user: body.user, amount: body.amount, execute: body.execute ?? false }, "garden plan requested");
         const result = await plantGarden(buildGardenRequest(body), { deployment: loadDeploymentConfig() });
         const garden = toGardenResponse(result);
-        res.end(JSON.stringify({ ok: true, garden, result: garden, source: "garden-agent" }));
+        const anchor = body.anchor === false ? { enabled: false, txHash: null, note: "anchor disabled by request" } : await anchorDecision(result);
+        res.end(JSON.stringify({ ok: true, garden, result: garden, anchor, source: "garden-agent" }));
+      } catch (error) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : "invalid request" }));
+      }
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/garden/chat") {
+      try {
+        const body = (await readJson(req)) as GardenChatRequest;
+        const answer = (await callOpenAiAssistant(body)) ?? fallbackAssistantReply(body);
+        res.end(JSON.stringify({ ok: true, answer, source: "agent-service" }));
       } catch (error) {
         res.statusCode = 400;
         res.end(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : "invalid request" }));
@@ -200,7 +315,7 @@ export function createAgentService() {
           chainId: decision.deployment.chainId,
         })
         : null;
-      res.end(JSON.stringify({ ok: true, decision: { ...decision, anchorTxHash: anchor.txHash ?? undefined }, anchor, execution, outcome, source: "agent-service" }));
+      res.end(JSON.stringify({ ok: true, decision: { ...decision, anchorTxHash: anchor.txHash ?? null }, anchor, execution, outcome, source: "agent-service" }));
     } catch (error) {
       res.statusCode = 400;
       res.end(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : "invalid request" }));
