@@ -1,6 +1,7 @@
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { loadDeploymentConfig } from "./config/contracts";
 import { CROP_STRATEGIES } from "./config/crops";
+import { resolveMarketOpportunities } from "./config/routes";
 import { hashDecision } from "./nodes/log";
 import type {
   AgentContext,
@@ -15,53 +16,13 @@ import type {
   YieldOpportunity,
 } from "./types";
 
-const DEFAULT_MARKET: YieldOpportunity[] = [
-  {
-    id: "steady-rwa-usdy",
-    strategyId: "steady-rwa-usdy",
-    protocol: "Mantle RWA USDY Route",
-    asset: "USDY",
-    expectedApyBps: 520,
-    riskLevel: 1,
-    liquidityUsd: 1_400_000,
-    gasCostUsd: 0.05,
-    confidence: 0.92,
-    marketCondition: "USDY RWA yield stable",
-    consumerTheme: "Rice / Safe Harvest",
-    trackFit: "AI x RWA",
-    shareLabel: "Safe harvest powered by USDY",
-  },
-  {
-    id: "growth-meth-yield",
-    strategyId: "growth-meth-yield",
-    protocol: "Mantle mETH Yield Route",
-    asset: "mETH",
-    expectedApyBps: 960,
-    riskLevel: 2,
-    liquidityUsd: 950_000,
-    gasCostUsd: 0.08,
-    confidence: 0.86,
-    marketCondition: "mETH staking yield improving",
-    consumerTheme: "Corn / Growth Field",
-    trackFit: "AI x RWA",
-    shareLabel: "Growth field compounding with mETH",
-  },
-  {
-    id: "boost-rwa-meth-dynamic",
-    strategyId: "boost-rwa-meth-dynamic",
-    protocol: "Mantle Dynamic RWA Route",
-    asset: "USDY/mETH",
-    expectedApyBps: 1_760,
-    riskLevel: 3,
-    liquidityUsd: 420_000,
-    gasCostUsd: 0.12,
-    confidence: 0.72,
-    marketCondition: "dynamic RWA and mETH spread opportunity",
-    consumerTheme: "Chili / Boost Farm",
-    trackFit: "Consumer & Viral DApps",
-    shareLabel: "Boost farm caught a spicy RWA spread",
-  },
-];
+function resolveOpenAiChatEndpoint() {
+  const raw = process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1";
+  const normalized = raw.replace(/\/$/, "");
+  if (normalized.endsWith("/chat/completions")) return normalized;
+  if (normalized.endsWith("/v1")) return `${normalized}/chat/completions`;
+  return `${normalized}/chat/completions`;
+}
 
 export const AutopilotStateAnnotation = Annotation.Root({
   intent: Annotation<AutopilotIntent>,
@@ -82,7 +43,7 @@ export type AutopilotGraphState = typeof AutopilotStateAnnotation.State;
 export type AutopilotGraphUpdate = typeof AutopilotStateAnnotation.Update;
 
 function observeMarketNode(state: AutopilotGraphState): AutopilotGraphUpdate {
-  return { market: state.market ?? { opportunities: DEFAULT_MARKET } };
+  return { market: state.market ?? { opportunities: resolveMarketOpportunities(state.deployment) } };
 }
 
 function rankOpportunity(opportunity: YieldOpportunity): ScoredYieldOpportunity {
@@ -109,14 +70,14 @@ function isPolicyEligible(state: AutopilotGraphState, opportunity: ScoredYieldOp
     amount > 0 &&
     amount <= state.intent.policy.maxTxAmount &&
     opportunity.riskLevel <= state.intent.policy.maxRiskLevel &&
-    state.intent.policy.allowedProtocols.includes(opportunity.protocol)
+    state.intent.policy.allowedProtocols.includes(opportunity.protocolAddress)
   );
 }
 
 function rankStrategiesNode(state: AutopilotGraphState): AutopilotGraphUpdate {
   const opportunities = state.market?.opportunities ?? [];
   if (opportunities.length === 0) {
-    throw new Error("Autopilot graph requires at least one yield opportunity");
+    throw new Error("Autopilot graph requires at least one strategy opportunity");
   }
 
   const rankedOpportunities = opportunities.map(rankOpportunity).sort((a, b) => b.score - a.score);
@@ -131,10 +92,10 @@ function buildFallbackAdvisor(state: AutopilotGraphState): AiAdvisorSignal {
     provider: "fallback",
     model: process.env.OPENAI_API_KEY ? (process.env.OPENAI_MODEL ?? "gpt-4o-mini") : "deterministic-rwa-advisor",
     recommendedStrategyId: selected.strategyId,
-    marketSummary: `${selected.asset} route selected from Mantle RWA market: ${selected.marketCondition}.`,
+    marketSummary: `${selected.asset} strategy selected from Mantle RWA market: ${selected.marketCondition}.`,
     riskNotes: [
       `Risk level ${selected.riskLevel} stays behind user max risk ${state.intent.policy.maxRiskLevel}.`,
-      `${selected.protocol} must pass deterministic allowlist before execution.`,
+      `${selected.protocol} (${selected.protocolAddress}) must pass deterministic allowlist before execution.`,
     ],
     confidenceReason: `AI recommendation is advisory only; deterministic policy gate selected ${selected.strategyId}.`,
   };
@@ -153,7 +114,7 @@ function sanitizeAdvisorSignal(state: AutopilotGraphState, input: Partial<AiAdvi
     model: input.model || fallback.model,
     recommendedStrategyId,
     marketSummary: input.marketSummary || fallback.marketSummary,
-    riskNotes: Array.isArray(input.riskNotes) && input.riskNotes.length > 0 ? input.riskNotes.slice(0, 4) : fallback.riskNotes,
+      riskNotes: Array.isArray(input.riskNotes) && input.riskNotes.length > 0 ? input.riskNotes.slice(0, 4) : fallback.riskNotes,
     confidenceReason: input.confidenceReason || fallback.confidenceReason,
   };
 }
@@ -162,8 +123,8 @@ async function callOpenAiAdvisor(state: AutopilotGraphState): Promise<AiAdvisorS
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return undefined;
 
-  const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
-  const response = await fetch(process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1/chat/completions", {
+  const model = process.env.OPENAI_MODEL ?? "glm-5";
+  const response = await fetch(resolveOpenAiChatEndpoint(), {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -177,7 +138,7 @@ async function callOpenAiAdvisor(state: AutopilotGraphState): Promise<AiAdvisorS
         {
           role: "system",
           content:
-            "You are Gardena AI, an RWA DeFi farming advisor. Return strict JSON only. Recommend only known strategy IDs. Never bypass policy; policy gate remains deterministic.",
+            "You are Gardena AI, an autonomous AI x RWA moat advisor on Mantle. Return strict JSON only. Recommend only known strategy IDs. Never bypass policy; policy gate remains deterministic.",
         },
         {
           role: "user",
@@ -238,8 +199,8 @@ function policyNode(state: AutopilotGraphState): AutopilotGraphUpdate {
     },
     {
       label: "Protocol allowlist",
-      pass: state.intent.policy.allowedProtocols.includes(state.selectedOpportunity.protocol),
-      detail: `${state.selectedOpportunity.protocol} must be allowed by user policy`,
+      pass: state.intent.policy.allowedProtocols.includes(state.selectedOpportunity.protocolAddress),
+      detail: `${state.selectedOpportunity.protocol} (${state.selectedOpportunity.protocolAddress}) must be allowed by user policy`,
     },
   ];
 
@@ -252,6 +213,7 @@ function policyNode(state: AutopilotGraphState): AutopilotGraphUpdate {
 }
 
 function currentApyBps(state: AutopilotGraphState): number {
+  if (!state.intent.currentStrategyId) return 0;
   const current = state.market?.opportunities.find((item) => item.strategyId === state.intent.currentStrategyId);
   if (current) return current.expectedApyBps;
   const plan = Object.values(CROP_STRATEGIES).find((item) => item.strategyId === state.intent.currentStrategyId);
@@ -267,11 +229,33 @@ function simulateNode(state: AutopilotGraphState): AutopilotGraphUpdate {
 
   const improvementBps = Math.max(0, state.selectedOpportunity.expectedApyBps - currentApyBps(state));
   let action: AutopilotAction;
+  const hasCurrentStrategy = Boolean(state.intent.currentStrategyId);
 
   if (!state.policy.allow) {
+    action = hasCurrentStrategy
+      ? {
+        kind: "close",
+        reason: `Current position should return to vault cash: ${state.policy.reason}`,
+        fromStrategyId: state.intent.currentStrategyId,
+        improvementBps,
+      }
+      : {
+        kind: "hold",
+        reason: `Autopilot blocked: ${state.policy.reason}`,
+        currentStrategyId: state.intent.currentStrategyId,
+        improvementBps,
+      };
+  } else if (!hasCurrentStrategy) {
+    action = {
+      kind: "open",
+      reason: `Idle vault cash can be allocated to ${state.selectedOpportunity.strategyId} after deterministic policy checks.`,
+      toStrategyId: state.selectedOpportunity.strategyId,
+      improvementBps,
+    };
+  } else if (state.selectedOpportunity.strategyId === state.intent.currentStrategyId) {
     action = {
       kind: "hold",
-      reason: `Autopilot blocked: ${state.policy.reason}`,
+      reason: `${state.selectedOpportunity.strategyId} is already the best eligible route for this position.`,
       currentStrategyId: state.intent.currentStrategyId,
       improvementBps,
     };
@@ -285,17 +269,28 @@ function simulateNode(state: AutopilotGraphState): AutopilotGraphUpdate {
   } else {
     action = {
       kind: "rebalance",
-      reason: `${state.selectedOpportunity.strategyId} improves yield by ${improvementBps} bps after policy checks.`,
+      reason: `${state.selectedOpportunity.strategyId} improves risk-adjusted return by ${improvementBps} bps after policy checks.`,
       fromStrategyId: state.intent.currentStrategyId,
       toStrategyId: state.selectedOpportunity.strategyId,
       improvementBps,
     };
   }
 
-  const summary =
-    action.kind === "rebalance"
-      ? `Autopilot approved rebalance to ${state.selectedOpportunity.strategyId}: ${action.reason}`
-      : `Autopilot hold: ${action.reason}`;
+  let summary: string;
+  switch (action.kind) {
+    case "rebalance":
+      summary = `Autopilot approved rebalance to ${state.selectedOpportunity.strategyId}: ${action.reason}`;
+      break;
+    case "open":
+      summary = `Autopilot approved a new position in ${state.selectedOpportunity.strategyId}: ${action.reason}`;
+      break;
+    case "close":
+      summary = `Autopilot approved closing the current position: ${action.reason}`;
+      break;
+    case "hold":
+      summary = `Autopilot hold: ${action.reason}`;
+      break;
+  }
 
   return { action, summary, createdAt: new Date().toISOString() };
 }

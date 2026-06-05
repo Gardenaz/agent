@@ -3,12 +3,20 @@
     "chainId": 5003,
     "network": "mantle-sepolia",
     "contracts": {
-      "agentIdentity": "0xfAc7E0Ecb4BdFB5CabDf0A4A8f9930E547771271",
-      "decisionLog": "0x4f38D23639a1E8644c64b262d2E4f09d22c5aC7c",
-      "riskPolicy": "0x73132c590b323B37344d52C9adaDA2dA939896d3",
-      "reputationRegistry": "0xC2a58107725a773A21102f575104b869dAfFCb4d",
-      "validationRegistry": "0x25863A08185bb82C7C363745702125800b4509da",
-      "autopilotPolicy": "0xe04003396491954919a851fBbF90d87555cDdFEf"
+      "agentIdentity": "0x7d4cF8dAcCdc589d8601CB547d693c73dd5724e2",
+      "decisionLog": "0x16E67F2Aaa40767FefeD0f2E1cF6bE87Ac3722Da",
+      "riskPolicy": "0xF48817E86B2D6256c6Af77b5839BC6Ea29C25048",
+      "reputationRegistry": "0x5ceFB0C6Be03909dc5d291BE3bE9ef677e95b672",
+      "validationRegistry": "0x116Fd78B3cb66c0904950656F57E7c28691e121B",
+      "autopilotPolicy": "0xd35fc1eb7BA3429f1B206FA6b054bbB71eCbD7e8",
+      "gardenUsdMock": "0x66cE4A644e004830887C3E8a44Fd5122B1edb28B",
+      "gardenRwaMockVault": "0x376368699aF13e6492b2A330e1d8e5D6560e38a8",
+      "steadyOracle": "0x22b422CECb0D4Bd5afF3EA999b048FA17F5263bD",
+      "growthOracle": "0x5bc7Cf88EB131DB18b5d7930e793095140799aD5",
+      "boostOracle": "0xB16FcAFB8378baA0a69142a325878FDCad58606A",
+      "steadyAdapter": "0x23F83a27674E9776Ab663b10e3745DD682858f29",
+      "growthAdapter": "0x744F554EfEA9cE87E459E4a927Ba7F1fb85669c5",
+      "boostAdapter": "0x9FD80B063C4d28fDbc592C7f4E4BA7F6f8166DEc"
     },
     "erc8004Registration": {
       "agentId": 1,
@@ -881,6 +889,11 @@
     ],
     "DecisionLog": [
       {
+        "type": "constructor",
+        "inputs": [],
+        "stateMutability": "nonpayable"
+      },
+      {
         "type": "function",
         "name": "decisionCount",
         "inputs": [],
@@ -962,6 +975,26 @@
             "name": "timestamp",
             "type": "uint256",
             "internalType": "uint256"
+          },
+          {
+            "name": "user",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "positionId",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "policyVersion",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "executor",
+            "type": "address",
+            "internalType": "address"
           }
         ],
         "stateMutability": "view"
@@ -999,6 +1032,26 @@
             "name": "riskLevel",
             "type": "uint8",
             "internalType": "uint8"
+          },
+          {
+            "name": "user",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "positionId",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "policyVersion",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "executor",
+            "type": "address",
+            "internalType": "address"
           }
         ],
         "outputs": [
@@ -1052,6 +1105,11 @@
             "internalType": "bool"
           },
           {
+            "name": "finalized",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
             "name": "metadataURI",
             "type": "string",
             "internalType": "string"
@@ -1066,7 +1124,20 @@
       },
       {
         "type": "function",
-        "name": "recordOutcome",
+        "name": "owner",
+        "inputs": [],
+        "outputs": [
+          {
+            "name": "",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "recordOutcomeForDecision",
         "inputs": [
           {
             "name": "decisionId",
@@ -1162,21 +1233,60 @@
       },
       {
         "type": "function",
-        "name": "updateOutcome",
+        "name": "renounceOwnership",
+        "inputs": [],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "setWriter",
         "inputs": [
           {
-            "name": "decisionId",
-            "type": "uint256",
-            "internalType": "uint256"
+            "name": "writer",
+            "type": "address",
+            "internalType": "address"
           },
           {
-            "name": "outcome",
-            "type": "uint8",
-            "internalType": "uint8"
+            "name": "allowed",
+            "type": "bool",
+            "internalType": "bool"
           }
         ],
         "outputs": [],
         "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "transferOwnership",
+        "inputs": [
+          {
+            "name": "newOwner",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "writers",
+        "inputs": [
+          {
+            "name": "",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "stateMutability": "view"
       },
       {
         "type": "event",
@@ -1197,8 +1307,32 @@
           {
             "name": "decisionHash",
             "type": "bytes32",
-            "indexed": false,
+            "indexed": true,
             "internalType": "bytes32"
+          },
+          {
+            "name": "user",
+            "type": "address",
+            "indexed": false,
+            "internalType": "address"
+          },
+          {
+            "name": "positionId",
+            "type": "uint256",
+            "indexed": false,
+            "internalType": "uint256"
+          },
+          {
+            "name": "policyVersion",
+            "type": "uint256",
+            "indexed": false,
+            "internalType": "uint256"
+          },
+          {
+            "name": "executor",
+            "type": "address",
+            "indexed": false,
+            "internalType": "address"
           },
           {
             "name": "riskLevel",
@@ -1254,22 +1388,63 @@
       },
       {
         "type": "event",
-        "name": "OutcomeUpdated",
+        "name": "OwnershipTransferred",
         "inputs": [
           {
-            "name": "decisionId",
-            "type": "uint256",
+            "name": "previousOwner",
+            "type": "address",
             "indexed": true,
-            "internalType": "uint256"
+            "internalType": "address"
           },
           {
-            "name": "outcome",
-            "type": "uint8",
-            "indexed": false,
-            "internalType": "uint8"
+            "name": "newOwner",
+            "type": "address",
+            "indexed": true,
+            "internalType": "address"
           }
         ],
         "anonymous": false
+      },
+      {
+        "type": "event",
+        "name": "WriterUpdated",
+        "inputs": [
+          {
+            "name": "writer",
+            "type": "address",
+            "indexed": true,
+            "internalType": "address"
+          },
+          {
+            "name": "allowed",
+            "type": "bool",
+            "indexed": false,
+            "internalType": "bool"
+          }
+        ],
+        "anonymous": false
+      },
+      {
+        "type": "error",
+        "name": "OwnableInvalidOwner",
+        "inputs": [
+          {
+            "name": "owner",
+            "type": "address",
+            "internalType": "address"
+          }
+        ]
+      },
+      {
+        "type": "error",
+        "name": "OwnableUnauthorizedAccount",
+        "inputs": [
+          {
+            "name": "account",
+            "type": "address",
+            "internalType": "address"
+          }
+        ]
       }
     ],
     "RiskPolicy": [
@@ -2055,6 +2230,35 @@
     ],
     "AutopilotPolicy": [
       {
+        "type": "constructor",
+        "inputs": [],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "allowedExecutors",
+        "inputs": [
+          {
+            "name": "",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
         "type": "function",
         "name": "allowedProtocols",
         "inputs": [
@@ -2080,12 +2284,70 @@
       },
       {
         "type": "function",
+        "name": "allowedStrategies",
+        "inputs": [
+          {
+            "name": "",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "authorizedVaults",
+        "inputs": [
+          {
+            "name": "",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
         "name": "canExecute",
         "inputs": [
           {
             "name": "user",
             "type": "address",
             "internalType": "address"
+          },
+          {
+            "name": "executor",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "protocol",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "strategyId",
+            "type": "bytes32",
+            "internalType": "bytes32"
           },
           {
             "name": "amount",
@@ -2096,11 +2358,6 @@
             "name": "riskLevel",
             "type": "uint8",
             "internalType": "uint8"
-          },
-          {
-            "name": "protocol",
-            "type": "address",
-            "internalType": "address"
           }
         ],
         "outputs": [
@@ -2118,6 +2375,38 @@
         "inputs": [],
         "outputs": [],
         "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "executorListOf",
+        "inputs": [
+          {
+            "name": "user",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "",
+            "type": "address[]",
+            "internalType": "address[]"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "owner",
+        "inputs": [],
+        "outputs": [
+          {
+            "name": "",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "view"
       },
       {
         "type": "function",
@@ -2151,6 +2440,11 @@
             "internalType": "uint256"
           },
           {
+            "name": "oracleHeartbeat",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
             "name": "enabled",
             "type": "bool",
             "internalType": "bool"
@@ -2180,12 +2474,75 @@
       },
       {
         "type": "function",
+        "name": "policyVersion",
+        "inputs": [
+          {
+            "name": "",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "protocolListOf",
+        "inputs": [
+          {
+            "name": "user",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "",
+            "type": "address[]",
+            "internalType": "address[]"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
         "name": "recordExecution",
         "inputs": [
           {
             "name": "user",
             "type": "address",
             "internalType": "address"
+          },
+          {
+            "name": "executor",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "protocol",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "strategyId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "amount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "riskLevel",
+            "type": "uint8",
+            "internalType": "uint8"
           },
           {
             "name": "lossAmount",
@@ -2198,8 +2555,33 @@
       },
       {
         "type": "function",
+        "name": "renounceOwnership",
+        "inputs": [],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
         "name": "resumeAutopilot",
         "inputs": [],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "setAuthorizedVault",
+        "inputs": [
+          {
+            "name": "vault",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "allowed",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
         "outputs": [],
         "stateMutability": "nonpayable"
       },
@@ -2228,12 +2610,45 @@
             "internalType": "uint256"
           },
           {
+            "name": "oracleHeartbeat",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
             "name": "protocols",
             "type": "address[]",
             "internalType": "address[]"
           },
           {
+            "name": "executors",
+            "type": "address[]",
+            "internalType": "address[]"
+          },
+          {
+            "name": "strategies",
+            "type": "bytes32[]",
+            "internalType": "bytes32[]"
+          },
+          {
             "name": "enabled",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "setExecutorAllowed",
+        "inputs": [
+          {
+            "name": "executor",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "allowed",
             "type": "bool",
             "internalType": "bool"
           }
@@ -2260,6 +2675,56 @@
         "stateMutability": "nonpayable"
       },
       {
+        "type": "function",
+        "name": "setStrategyAllowed",
+        "inputs": [
+          {
+            "name": "strategyId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "allowed",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "strategyListOf",
+        "inputs": [
+          {
+            "name": "user",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "",
+            "type": "bytes32[]",
+            "internalType": "bytes32[]"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "transferOwnership",
+        "inputs": [
+          {
+            "name": "newOwner",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+      },
+      {
         "type": "event",
         "name": "AutopilotExecutionRecorded",
         "inputs": [
@@ -2268,6 +2733,30 @@
             "type": "address",
             "indexed": true,
             "internalType": "address"
+          },
+          {
+            "name": "executor",
+            "type": "address",
+            "indexed": true,
+            "internalType": "address"
+          },
+          {
+            "name": "protocol",
+            "type": "address",
+            "indexed": true,
+            "internalType": "address"
+          },
+          {
+            "name": "strategyId",
+            "type": "bytes32",
+            "indexed": false,
+            "internalType": "bytes32"
+          },
+          {
+            "name": "amount",
+            "type": "uint256",
+            "indexed": false,
+            "internalType": "uint256"
           },
           {
             "name": "lossAmount",
@@ -2319,6 +2808,18 @@
             "internalType": "uint256"
           },
           {
+            "name": "oracleHeartbeat",
+            "type": "uint256",
+            "indexed": false,
+            "internalType": "uint256"
+          },
+          {
+            "name": "policyVersion",
+            "type": "uint256",
+            "indexed": false,
+            "internalType": "uint256"
+          },
+          {
             "name": "enabled",
             "type": "bool",
             "indexed": false,
@@ -2355,6 +2856,50 @@
       },
       {
         "type": "event",
+        "name": "ExecutorAllowed",
+        "inputs": [
+          {
+            "name": "user",
+            "type": "address",
+            "indexed": true,
+            "internalType": "address"
+          },
+          {
+            "name": "executor",
+            "type": "address",
+            "indexed": true,
+            "internalType": "address"
+          },
+          {
+            "name": "allowed",
+            "type": "bool",
+            "indexed": false,
+            "internalType": "bool"
+          }
+        ],
+        "anonymous": false
+      },
+      {
+        "type": "event",
+        "name": "OwnershipTransferred",
+        "inputs": [
+          {
+            "name": "previousOwner",
+            "type": "address",
+            "indexed": true,
+            "internalType": "address"
+          },
+          {
+            "name": "newOwner",
+            "type": "address",
+            "indexed": true,
+            "internalType": "address"
+          }
+        ],
+        "anonymous": false
+      },
+      {
+        "type": "event",
         "name": "ProtocolAllowed",
         "inputs": [
           {
@@ -2377,6 +2922,1014 @@
           }
         ],
         "anonymous": false
+      },
+      {
+        "type": "event",
+        "name": "StrategyAllowed",
+        "inputs": [
+          {
+            "name": "user",
+            "type": "address",
+            "indexed": true,
+            "internalType": "address"
+          },
+          {
+            "name": "strategyId",
+            "type": "bytes32",
+            "indexed": true,
+            "internalType": "bytes32"
+          },
+          {
+            "name": "allowed",
+            "type": "bool",
+            "indexed": false,
+            "internalType": "bool"
+          }
+        ],
+        "anonymous": false
+      },
+      {
+        "type": "event",
+        "name": "VaultAuthorized",
+        "inputs": [
+          {
+            "name": "vault",
+            "type": "address",
+            "indexed": true,
+            "internalType": "address"
+          },
+          {
+            "name": "allowed",
+            "type": "bool",
+            "indexed": false,
+            "internalType": "bool"
+          }
+        ],
+        "anonymous": false
+      },
+      {
+        "type": "error",
+        "name": "OwnableInvalidOwner",
+        "inputs": [
+          {
+            "name": "owner",
+            "type": "address",
+            "internalType": "address"
+          }
+        ]
+      },
+      {
+        "type": "error",
+        "name": "OwnableUnauthorizedAccount",
+        "inputs": [
+          {
+            "name": "account",
+            "type": "address",
+            "internalType": "address"
+          }
+        ]
+      }
+    ],
+    "GardenRwaMockVault": [
+      {
+        "type": "constructor",
+        "inputs": [
+          {
+            "name": "settlementToken_",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "autopilotPolicy_",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "decisionLog_",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "activePositionIdsOf",
+        "inputs": [
+          {
+            "name": "user",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "",
+            "type": "uint256[]",
+            "internalType": "uint256[]"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "autopilotPolicy",
+        "inputs": [],
+        "outputs": [
+          {
+            "name": "",
+            "type": "address",
+            "internalType": "contract AutopilotPolicy"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "cashBalance",
+        "inputs": [
+          {
+            "name": "",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "closePosition",
+        "inputs": [
+          {
+            "name": "positionId",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "decisionHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "harvestedValue",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "currentValue",
+        "inputs": [
+          {
+            "name": "positionId",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "decisionLog",
+        "inputs": [],
+        "outputs": [
+          {
+            "name": "",
+            "type": "address",
+            "internalType": "contract DecisionLog"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "defaultAgentId",
+        "inputs": [],
+        "outputs": [
+          {
+            "name": "",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "deposit",
+        "inputs": [
+          {
+            "name": "amount",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "depositFor",
+        "inputs": [
+          {
+            "name": "user",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "amount",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "harvest",
+        "inputs": [
+          {
+            "name": "positionId",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "harvestedValue",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "isVaultOperator",
+        "inputs": [
+          {
+            "name": "owner",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "operator",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "openPositionFor",
+        "inputs": [
+          {
+            "name": "user",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "cropKey",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "principal",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "decisionHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "positionId",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "owner",
+        "inputs": [],
+        "outputs": [
+          {
+            "name": "",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "plant",
+        "inputs": [
+          {
+            "name": "cropKey",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "principal",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "positionId",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "positionCount",
+        "inputs": [],
+        "outputs": [
+          {
+            "name": "",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "positionIdsOf",
+        "inputs": [
+          {
+            "name": "user",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "",
+            "type": "uint256[]",
+            "internalType": "uint256[]"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "positions",
+        "inputs": [
+          {
+            "name": "",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "owner",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "cropKeyHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "principal",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "assetAmount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "plantedPrice",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "harvestedValue",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "plantedAt",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "lastRebalancedAt",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "harvestedAt",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "harvested",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "previewValue",
+        "inputs": [
+          {
+            "name": "cropKey",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "principal",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "rebalance",
+        "inputs": [
+          {
+            "name": "positionId",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "newCropKey",
+            "type": "string",
+            "internalType": "string"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "nextAssetAmount",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "rebalancePosition",
+        "inputs": [
+          {
+            "name": "positionId",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "newCropKey",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "decisionHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "nextAssetAmount",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "renounceOwnership",
+        "inputs": [],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "routePrice",
+        "inputs": [
+          {
+            "name": "cropKey",
+            "type": "string",
+            "internalType": "string"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "price",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "routes",
+        "inputs": [
+          {
+            "name": "",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "name",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "asset",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "protocolLabel",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "adapter",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "oracle",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "riskLevel",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "active",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "setCropRoute",
+        "inputs": [
+          {
+            "name": "cropKey",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "name",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "asset",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "protocolLabel",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "adapter",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "oracle",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "riskLevel",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "active",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "setDefaultAgentId",
+        "inputs": [
+          {
+            "name": "agentId",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "setVaultOperator",
+        "inputs": [
+          {
+            "name": "operator",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "allowed",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "settlementToken",
+        "inputs": [],
+        "outputs": [
+          {
+            "name": "",
+            "type": "address",
+            "internalType": "contract IGardenUsdMock"
+          }
+        ],
+        "stateMutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "transferOwnership",
+        "inputs": [
+          {
+            "name": "newOwner",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "function",
+        "name": "withdraw",
+        "inputs": [
+          {
+            "name": "amount",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "outputs": [],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "type": "event",
+        "name": "CashDeposited",
+        "inputs": [
+          {
+            "name": "caller",
+            "type": "address",
+            "indexed": true,
+            "internalType": "address"
+          },
+          {
+            "name": "user",
+            "type": "address",
+            "indexed": true,
+            "internalType": "address"
+          },
+          {
+            "name": "amount",
+            "type": "uint256",
+            "indexed": false,
+            "internalType": "uint256"
+          }
+        ],
+        "anonymous": false
+      },
+      {
+        "type": "event",
+        "name": "CashWithdrawn",
+        "inputs": [
+          {
+            "name": "user",
+            "type": "address",
+            "indexed": true,
+            "internalType": "address"
+          },
+          {
+            "name": "amount",
+            "type": "uint256",
+            "indexed": false,
+            "internalType": "uint256"
+          }
+        ],
+        "anonymous": false
+      },
+      {
+        "type": "event",
+        "name": "CropRouteSet",
+        "inputs": [
+          {
+            "name": "cropKeyHash",
+            "type": "bytes32",
+            "indexed": true,
+            "internalType": "bytes32"
+          },
+          {
+            "name": "cropKey",
+            "type": "string",
+            "indexed": false,
+            "internalType": "string"
+          },
+          {
+            "name": "name",
+            "type": "string",
+            "indexed": false,
+            "internalType": "string"
+          },
+          {
+            "name": "asset",
+            "type": "string",
+            "indexed": false,
+            "internalType": "string"
+          },
+          {
+            "name": "protocolLabel",
+            "type": "string",
+            "indexed": false,
+            "internalType": "string"
+          },
+          {
+            "name": "adapter",
+            "type": "address",
+            "indexed": false,
+            "internalType": "address"
+          },
+          {
+            "name": "oracle",
+            "type": "address",
+            "indexed": false,
+            "internalType": "address"
+          },
+          {
+            "name": "riskLevel",
+            "type": "uint8",
+            "indexed": false,
+            "internalType": "uint8"
+          },
+          {
+            "name": "active",
+            "type": "bool",
+            "indexed": false,
+            "internalType": "bool"
+          }
+        ],
+        "anonymous": false
+      },
+      {
+        "type": "event",
+        "name": "OwnershipTransferred",
+        "inputs": [
+          {
+            "name": "previousOwner",
+            "type": "address",
+            "indexed": true,
+            "internalType": "address"
+          },
+          {
+            "name": "newOwner",
+            "type": "address",
+            "indexed": true,
+            "internalType": "address"
+          }
+        ],
+        "anonymous": false
+      },
+      {
+        "type": "event",
+        "name": "PositionHarvested",
+        "inputs": [
+          {
+            "name": "positionId",
+            "type": "uint256",
+            "indexed": true,
+            "internalType": "uint256"
+          },
+          {
+            "name": "harvestedValue",
+            "type": "uint256",
+            "indexed": false,
+            "internalType": "uint256"
+          },
+          {
+            "name": "priceAtHarvest",
+            "type": "uint256",
+            "indexed": false,
+            "internalType": "uint256"
+          }
+        ],
+        "anonymous": false
+      },
+      {
+        "type": "event",
+        "name": "PositionPlanted",
+        "inputs": [
+          {
+            "name": "positionId",
+            "type": "uint256",
+            "indexed": true,
+            "internalType": "uint256"
+          },
+          {
+            "name": "owner",
+            "type": "address",
+            "indexed": true,
+            "internalType": "address"
+          },
+          {
+            "name": "cropKeyHash",
+            "type": "bytes32",
+            "indexed": true,
+            "internalType": "bytes32"
+          },
+          {
+            "name": "principal",
+            "type": "uint256",
+            "indexed": false,
+            "internalType": "uint256"
+          },
+          {
+            "name": "assetAmount",
+            "type": "uint256",
+            "indexed": false,
+            "internalType": "uint256"
+          },
+          {
+            "name": "plantedPrice",
+            "type": "uint256",
+            "indexed": false,
+            "internalType": "uint256"
+          }
+        ],
+        "anonymous": false
+      },
+      {
+        "type": "event",
+        "name": "PositionRebalanced",
+        "inputs": [
+          {
+            "name": "positionId",
+            "type": "uint256",
+            "indexed": true,
+            "internalType": "uint256"
+          },
+          {
+            "name": "fromCropKeyHash",
+            "type": "bytes32",
+            "indexed": true,
+            "internalType": "bytes32"
+          },
+          {
+            "name": "toCropKeyHash",
+            "type": "bytes32",
+            "indexed": true,
+            "internalType": "bytes32"
+          },
+          {
+            "name": "previousAssetAmount",
+            "type": "uint256",
+            "indexed": false,
+            "internalType": "uint256"
+          },
+          {
+            "name": "nextAssetAmount",
+            "type": "uint256",
+            "indexed": false,
+            "internalType": "uint256"
+          },
+          {
+            "name": "previousValue",
+            "type": "uint256",
+            "indexed": false,
+            "internalType": "uint256"
+          },
+          {
+            "name": "nextPrice",
+            "type": "uint256",
+            "indexed": false,
+            "internalType": "uint256"
+          }
+        ],
+        "anonymous": false
+      },
+      {
+        "type": "event",
+        "name": "VaultOperatorUpdated",
+        "inputs": [
+          {
+            "name": "owner",
+            "type": "address",
+            "indexed": true,
+            "internalType": "address"
+          },
+          {
+            "name": "operator",
+            "type": "address",
+            "indexed": true,
+            "internalType": "address"
+          },
+          {
+            "name": "allowed",
+            "type": "bool",
+            "indexed": false,
+            "internalType": "bool"
+          }
+        ],
+        "anonymous": false
+      },
+      {
+        "type": "error",
+        "name": "OwnableInvalidOwner",
+        "inputs": [
+          {
+            "name": "owner",
+            "type": "address",
+            "internalType": "address"
+          }
+        ]
+      },
+      {
+        "type": "error",
+        "name": "OwnableUnauthorizedAccount",
+        "inputs": [
+          {
+            "name": "account",
+            "type": "address",
+            "internalType": "address"
+          }
+        ]
       }
     ]
   }

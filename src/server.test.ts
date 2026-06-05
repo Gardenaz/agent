@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildGardenRequest, buildIntent, createAgentService } from "./server";
+import { buildGardenRequest, buildIntent, createAgentService, parseAutopilotWorkerConfig } from "./server";
 
 const user = "0x7777777777777777777777777777777777777777" as const;
 
@@ -9,9 +9,10 @@ describe("Gardena agent HTTP service", () => {
     const intent = buildIntent({ user, crop: "growth", amount: "250", riskPreference: 2 });
 
     assert.equal(intent.mode, "autopilot");
-    assert.equal(intent.currentStrategyId, "growth-meth-yield");
+    assert.equal(intent.currentStrategyId, undefined);
     assert.equal(intent.policy.maxRiskLevel, 2);
-    assert.ok(intent.policy.allowedProtocols.includes("Mantle mETH Yield Route"));
+    assert.equal(intent.policy.allowedProtocols.length, 1);
+    assert.match(intent.policy.allowedProtocols[0] ?? "", /^0x[a-fA-F0-9]{40}$/);
   });
 
   it("builds a beginner garden request from app request payload", () => {
@@ -28,6 +29,41 @@ describe("Gardena agent HTTP service", () => {
     assert.equal(request.amount, "1000");
     assert.equal(request.userMaxRiskLevel, 3);
     assert.equal(request.execute, true);
+  });
+
+  it("parses autopilot worker config from env", () => {
+    const original = {
+      enabled: process.env.AUTOPILOT_WORKER_ENABLED,
+      crop: process.env.AUTOPILOT_WORKER_CROP,
+      amount: process.env.AUTOPILOT_WORKER_AMOUNT,
+      risk: process.env.AUTOPILOT_WORKER_RISK_LEVEL,
+      interval: process.env.AUTOPILOT_WORKER_INTERVAL_SECONDS,
+      execute: process.env.AUTOPILOT_WORKER_EXECUTE,
+    };
+
+    try {
+      process.env.AUTOPILOT_WORKER_ENABLED = "true";
+      process.env.AUTOPILOT_WORKER_CROP = "growth";
+      process.env.AUTOPILOT_WORKER_AMOUNT = "250";
+      process.env.AUTOPILOT_WORKER_RISK_LEVEL = "2";
+      process.env.AUTOPILOT_WORKER_INTERVAL_SECONDS = "60";
+      process.env.AUTOPILOT_WORKER_EXECUTE = "false";
+
+      const config = parseAutopilotWorkerConfig();
+
+      assert.ok(config);
+      assert.equal(config?.crop, "growth");
+      assert.equal(config?.amount, "250");
+      assert.equal(config?.riskPreference, 2);
+      assert.equal(config?.execute, false);
+    } finally {
+      process.env.AUTOPILOT_WORKER_ENABLED = original.enabled;
+      process.env.AUTOPILOT_WORKER_CROP = original.crop;
+      process.env.AUTOPILOT_WORKER_AMOUNT = original.amount;
+      process.env.AUTOPILOT_WORKER_RISK_LEVEL = original.risk;
+      process.env.AUTOPILOT_WORKER_INTERVAL_SECONDS = original.interval;
+      process.env.AUTOPILOT_WORKER_EXECUTE = original.execute;
+    }
   });
 
   it("serves /autopilot/plan with agent-service source and optional relayer anchor", async () => {

@@ -1,4 +1,5 @@
 import { runAutopilotTick } from "./autopilot";
+import { resolveAllowedProtocols } from "./config/routes";
 import type { AgentContext, AiAdvisorSignal, AutopilotDecision, AutopilotIntent, CropId, RiskLevel, ScoredYieldOpportunity } from "./types";
 
 type MockAdvisor = {
@@ -37,8 +38,6 @@ export type GardenAgentDecision = AutopilotDecision & {
   beginnerExplanation: string;
 };
 
-const ALLOWED_PROTOCOLS = ["Mantle RWA USDY Route", "Mantle mETH Yield Route", "Mantle Dynamic RWA Route"];
-
 function clampRisk(level: number): RiskLevel {
   if (level <= 1) return 1;
   if (level >= 3) return 3;
@@ -65,12 +64,12 @@ function inferMarketMood(opportunities: ScoredYieldOpportunity[]): MarketMood {
   const lowLiquidity = best ? best.liquidityUsd < 300_000 : true;
 
   if (bestApy >= 700 && avgConfidence >= 0.7 && !lowLiquidity) {
-    return { mood: "bullish", weather: "sunny", reason: "Yield, confidence, liquidity healthy." };
+    return { mood: "bullish", weather: "sunny", reason: "Strategy, confidence, and liquidity healthy." };
   }
   if (bestApy <= 250 || avgConfidence < 0.55 || lowLiquidity) {
-    return { mood: "bearish", weather: "rainy", reason: "Yield or confidence weak; protect garden." };
+    return { mood: "bearish", weather: "rainy", reason: "Strategy or confidence weak; protect moat." };
   }
-  return { mood: "neutral", weather: "cloudy", reason: "Market mixed; grow carefully." };
+  return { mood: "neutral", weather: "cloudy", reason: "Market mixed; allocate carefully." };
 }
 
 function cropLabel(strategyId: string, fallback?: string): string {
@@ -90,7 +89,7 @@ function buildGardenSimulation(decision: AutopilotDecision, marketMood: MarketMo
   return {
     crop: cropLabel(decision.selectedOpportunity.strategyId, decision.selectedOpportunity.consumerTheme),
     background: backgroundFor(marketMood.weather),
-    actionLabel: decision.action.kind === "rebalance" ? "Plant now" : "Keep seed safe",
+    actionLabel: decision.action.kind === "rebalance" ? "Execute now" : "Keep route safe",
     potSlots: decision.rankedOpportunities.slice(0, 3).map((item) => ({
       id: item.strategyId,
       label: cropLabel(item.strategyId, item.consumerTheme),
@@ -103,24 +102,19 @@ function buildGardenSimulation(decision: AutopilotDecision, marketMood: MarketMo
 
 function beginnerCopy(decision: AutopilotDecision, parsedIntent: GardenAgentDecision["parsedIntent"], mood: MarketMood): string {
   if (parsedIntent.crop === "steady") {
-    return `Beginner safe mode: agent picked ${decision.selectedOpportunity.asset} via ${decision.selectedOpportunity.protocol}. ${mood.reason}`;
+    return `Conservative mode: agent picked ${decision.selectedOpportunity.asset} via ${decision.selectedOpportunity.protocol}. ${mood.reason}`;
   }
   if (decision.action.kind === "hold") {
     return `Agent keeps funds safe for now. ${mood.reason}`;
   }
-  return `Agent grows garden through ${decision.selectedOpportunity.asset}. Policy gate checks risk before move.`;
+  return `Agent runs ${decision.selectedOpportunity.asset} strategy through a deterministic policy gate before move.`;
 }
 
-function chooseCurrentStrategy(crop: CropId): string {
-  if (crop === "steady") return "steady-rwa-usdy";
-  if (crop === "growth") return "steady-rwa-usdy";
-  return "growth-meth-yield";
-}
-
-function buildPolicy(request: GardenRequest, parsed: GardenAgentDecision["parsedIntent"]): AutopilotIntent["policy"] {
+function buildPolicy(request: GardenRequest, parsed: GardenAgentDecision["parsedIntent"], context: AgentContext): AutopilotIntent["policy"] {
   const advisorRisk = request.mockAdvisor?.suggestedMaxRiskLevel ?? parsed.riskPreference;
   const userMax = request.userMaxRiskLevel ?? parsed.riskPreference;
   const maxRiskLevel = clampRisk(Math.min(userMax, advisorRisk, parsed.riskPreference));
+  const allowedProtocols = resolveAllowedProtocols(context.deployment);
 
   return {
     enabled: true,
@@ -128,7 +122,7 @@ function buildPolicy(request: GardenRequest, parsed: GardenAgentDecision["parsed
     maxTxAmount: 5_000,
     maxRiskLevel,
     rebalanceIntervalSeconds: 3600,
-    allowedProtocols: ALLOWED_PROTOCOLS,
+    allowedProtocols,
   };
 }
 
@@ -177,22 +171,15 @@ function applyMockAdvisor(decision: AutopilotDecision, mock?: MockAdvisor): Auto
 
 export async function plantGarden(request: GardenRequest, context: AgentContext = {}): Promise<GardenAgentDecision> {
   const parsedIntent = parseIntent(request.message, request.userMaxRiskLevel);
-  const effectivePolicy = buildPolicy(request, parsedIntent);
-  const allowedProtocols =
-    parsedIntent.crop === "steady" && !request.mockAdvisor
-      ? ["Mantle RWA USDY Route"]
-      : parsedIntent.crop === "growth" && !request.mockAdvisor
-        ? ["Mantle RWA USDY Route", "Mantle mETH Yield Route"]
-        : effectivePolicy.allowedProtocols;
+  const effectivePolicy = buildPolicy(request, parsedIntent, context);
   const intent: AutopilotIntent = {
     user: request.user,
     agentId: "1",
     amount: request.amount,
     riskPreference: parsedIntent.riskPreference,
     mode: "autopilot",
-    currentStrategyId: chooseCurrentStrategy(parsedIntent.crop),
     minImprovementBps: request.mockAdvisor?.suggestedMinImprovementBps ?? (parsedIntent.crop === "steady" ? 0 : 50),
-    policy: { ...effectivePolicy, allowedProtocols },
+    policy: effectivePolicy,
   };
 
   const rawDecision = await runAutopilotTick(intent, context);
@@ -204,11 +191,11 @@ export async function plantGarden(request: GardenRequest, context: AgentContext 
         ...decision,
         action: {
           kind: "hold" as const,
-          reason: "Rainy market: agent protects garden until yield/confidence recovers.",
+          reason: "Rainy market: agent protects moat until risk-adjusted conditions recover.",
           currentStrategyId: intent.currentStrategyId,
           improvementBps: 0,
         },
-        summary: "Autopilot hold: Rainy market protection active.",
+        summary: "Autopilot hold: rainy market protection active.",
       }
     : decision;
 

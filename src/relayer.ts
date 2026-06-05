@@ -15,6 +15,10 @@ const DECISION_LOG_ABI: any = [
       { name: "targetProtocol", type: "address" },
       { name: "amount", type: "uint256" },
       { name: "riskLevel", type: "uint8" },
+      { name: "user", type: "address" },
+      { name: "positionId", type: "uint256" },
+      { name: "policyVersion", type: "uint256" },
+      { name: "executor", type: "address" },
     ],
     outputs: [{ name: "", type: "uint256" }],
   },
@@ -57,12 +61,20 @@ function strategyIdToBytes32(strategyId: string): `0x${string}` {
   return `0x${bytes.toString("hex").padEnd(64, "0")}` as `0x${string}`;
 }
 
-function protocolAddress(): `0x${string}` {
-  const value = process.env.TARGET_PROTOCOL_ADDRESS;
+function protocolAddress(decision: AutopilotDecision): `0x${string}` {
+  const value = decision.deployment?.contracts.gardenRwaMockVault;
   return value && isAddress(value) ? value : "0x0000000000000000000000000000000000000000";
 }
 
 export async function anchorDecision(decision: AutopilotDecision): Promise<AnchorResult> {
+  if (process.env.ALLOW_DIRECT_DECISION_LOG_WRITES !== "true") {
+    return {
+      enabled: false,
+      txHash: null,
+      note: "Direct decision anchoring skipped; vault writes DecisionLog during delegated execution",
+    };
+  }
+
   const enabled = process.env.RELAYER_ENABLED === "true";
   const decisionLog = decision.deployment?.contracts.decisionLog;
   if (!enabled) return { enabled: false, txHash: null, note: "RELAYER_ENABLED disabled" };
@@ -77,9 +89,13 @@ export async function anchorDecision(decision: AutopilotDecision): Promise<Ancho
       agentId,
       decision.decisionHash,
       strategyIdToBytes32(decision.selectedOpportunity.strategyId),
-      protocolAddress(),
+      protocolAddress(decision),
       amount,
       decision.selectedOpportunity.riskLevel,
+      decision.intent.user,
+      BigInt(decision.intent.currentPositionId ?? 0),
+      0n,
+      "0x0000000000000000000000000000000000000000",
     ],
   });
 
@@ -96,7 +112,18 @@ export async function anchorDecision(decision: AutopilotDecision): Promise<Ancho
     address: decisionLog,
     abi: DECISION_LOG_ABI,
     functionName: "logDecision",
-    args: [agentId, decision.decisionHash, strategyIdToBytes32(decision.selectedOpportunity.strategyId), protocolAddress(), amount, decision.selectedOpportunity.riskLevel],
+    args: [
+      agentId,
+      decision.decisionHash,
+      strategyIdToBytes32(decision.selectedOpportunity.strategyId),
+      protocolAddress(decision),
+      amount,
+      decision.selectedOpportunity.riskLevel,
+      decision.intent.user,
+      BigInt(decision.intent.currentPositionId ?? 0),
+      0n,
+      "0x0000000000000000000000000000000000000000",
+    ],
   });
 
   return { enabled: true, txHash, note: "DecisionLog transaction sent by backend relayer", mode: "sent" };
