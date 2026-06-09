@@ -89,7 +89,7 @@ function buildGardenSimulation(decision: AutopilotDecision, marketMood: MarketMo
   return {
     crop: cropLabel(decision.selectedOpportunity.strategyId, decision.selectedOpportunity.consumerTheme),
     background: backgroundFor(marketMood.weather),
-    actionLabel: decision.action.kind === "rebalance" ? "Execute now" : "Keep route safe",
+    actionLabel: decision.action.kind === "rebalanceLiquidity" ? "Execute now" : "Keep route safe",
     potSlots: decision.rankedOpportunities.slice(0, 3).map((item) => ({
       id: item.strategyId,
       label: cropLabel(item.strategyId, item.consumerTheme),
@@ -114,7 +114,9 @@ function buildPolicy(request: GardenRequest, parsed: GardenAgentDecision["parsed
   const advisorRisk = request.mockAdvisor?.suggestedMaxRiskLevel ?? parsed.riskPreference;
   const userMax = request.userMaxRiskLevel ?? parsed.riskPreference;
   const maxRiskLevel = clampRisk(Math.min(userMax, advisorRisk, parsed.riskPreference));
-  const allowedProtocols = resolveAllowedProtocols(context.deployment);
+  const allowedProtocols = context.yieldOpportunities?.length
+    ? Array.from(new Set(context.yieldOpportunities.map((opportunity) => opportunity.protocolAddress)))
+    : resolveAllowedProtocols(context.deployment);
 
   return {
     enabled: true,
@@ -122,7 +124,11 @@ function buildPolicy(request: GardenRequest, parsed: GardenAgentDecision["parsed
     maxTxAmount: 5_000,
     maxRiskLevel,
     rebalanceIntervalSeconds: 3600,
+    oracleHeartbeatSeconds: 900,
     allowedProtocols,
+    allowedExecutors: [request.user],
+    allowedStrategies: [],
+    executionAuthority: "wallet",
   };
 }
 

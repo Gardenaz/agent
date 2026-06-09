@@ -2,6 +2,46 @@ export type Address = `0x${string}`;
 export type CropId = "steady" | "growth" | "boost";
 export type RiskLevel = 1 | 2 | 3;
 export type DecisionStatus = "approved" | "blocked";
+export type AgniActionType = "swap" | "addLiquidity" | "removeLiquidity" | "rebalanceLiquidity";
+export type AgniExecutionKind = "swap" | "liquidity";
+export type ExecutionAuthority = "wallet" | "managed";
+
+export type TokenRef = {
+  symbol: string;
+  address?: Address;
+  decimals: number;
+};
+
+export type Erc8004Binding = {
+  agentId: string;
+  registries: {
+    agentIdentity: `0x${string}` | undefined;
+    autopilotPolicy: `0x${string}` | undefined;
+  };
+};
+
+export type BenchmarkProof = {
+  decisionLog: `0x${string}` | undefined;
+  status: "required";
+  anchorState: "pending" | "anchored";
+  outcomeState: "pending" | "recorded";
+  transparency: "live";
+};
+
+export type DecisionExecutionMeta = {
+  actionType: AgniActionType | "hold";
+  executionKind?: AgniExecutionKind;
+  pair?: string;
+  tokenIn?: TokenRef;
+  tokenOut?: TokenRef;
+  feeTier?: number;
+  slippageBps?: number;
+  deadlineSeconds?: number;
+  quotedInputAmount?: string;
+  quotedOutputAmount?: string;
+  minimumOutputAmount?: string;
+  positionTokenId?: string;
+};
 
 export type AgentIntent = {
   user: `0x${string}`;
@@ -18,6 +58,14 @@ export type AgentPlan = {
   protocolAddress: Address;
   action: string;
   asset: string;
+  actionType?: AgniActionType;
+  executionKind?: AgniExecutionKind;
+  pair?: string;
+  tokenIn?: TokenRef;
+  tokenOut?: TokenRef;
+  feeTier?: number;
+  slippageBps?: number;
+  deadlineSeconds?: number;
   adapterAddress?: Address;
   assetTokenAddress?: Address;
   oracleAddress?: Address;
@@ -40,27 +88,21 @@ export type AgentDecision = {
   decisionHash: `0x${string}`;
   summary: string;
   createdAt: string;
+  execution: DecisionExecutionMeta;
   deployment?: DeploymentConfig;
+  erc8004: Erc8004Binding;
+  benchmark: BenchmarkProof;
+  track: {
+    primary: "AI x RWA";
+    secondary: "Consumer & Viral DApps";
+    support: "Agentic Wallets & Economy";
+  };
 };
 
 export type ContractAddresses = {
   agentIdentity: `0x${string}`;
   decisionLog: `0x${string}`;
-  riskPolicy: `0x${string}`;
-  reputationRegistry?: `0x${string}`;
-  validationRegistry?: `0x${string}`;
-  autopilotPolicy?: `0x${string}`;
-  gardenUsdMock?: `0x${string}`;
-  gardenRwaMockVault?: `0x${string}`;
-  steadyAdapter?: `0x${string}`;
-  growthAdapter?: `0x${string}`;
-  boostAdapter?: `0x${string}`;
-  steadyAsset?: `0x${string}`;
-  growthAsset?: `0x${string}`;
-  boostAsset?: `0x${string}`;
-  steadyOracle?: `0x${string}`;
-  growthOracle?: `0x${string}`;
-  boostOracle?: `0x${string}`;
+  autopilotPolicy: `0x${string}`;
 };
 
 export type DeploymentConfig = {
@@ -80,6 +122,15 @@ export type YieldOpportunity = {
   protocol: string;
   protocolAddress: Address;
   asset: string;
+  actionType: AgniActionType;
+  executionKind: AgniExecutionKind;
+  pair?: string;
+  tokenIn?: TokenRef;
+  tokenOut?: TokenRef;
+  feeTier?: number;
+  slippageBps?: number;
+  deadlineSeconds?: number;
+  positionTokenId?: string;
   adapterAddress?: Address;
   assetTokenAddress?: Address;
   oracleAddress?: Address;
@@ -120,7 +171,11 @@ export type AutopilotPolicyInput = {
   maxTxAmount: number;
   maxRiskLevel: RiskLevel;
   rebalanceIntervalSeconds: number;
+  oracleHeartbeatSeconds: number;
   allowedProtocols: Address[];
+  allowedExecutors: Address[];
+  allowedStrategies: string[];
+  executionAuthority: ExecutionAuthority;
 };
 
 export type AutopilotIntent = {
@@ -130,16 +185,17 @@ export type AutopilotIntent = {
   riskPreference: RiskLevel;
   mode: "autopilot";
   currentStrategyId?: string;
-  currentPositionId?: number;
+  currentPositionId?: string;
   minImprovementBps: number;
   policy: AutopilotPolicyInput;
 };
 
 export type AutopilotAction =
-  | { kind: "open"; reason: string; toStrategyId: string; improvementBps: number }
-  | { kind: "rebalance"; reason: string; fromStrategyId?: string; toStrategyId: string; improvementBps: number }
-  | { kind: "close"; reason: string; fromStrategyId?: string; improvementBps: number }
-  | { kind: "hold"; reason: string; currentStrategyId?: string; improvementBps: number };
+  | { kind: "swap"; reason: string; toStrategyId: string; improvementBps: number; pair?: string }
+  | { kind: "addLiquidity"; reason: string; toStrategyId: string; improvementBps: number; pair?: string }
+  | { kind: "removeLiquidity"; reason: string; fromStrategyId?: string; improvementBps: number; pair?: string; positionTokenId?: string }
+  | { kind: "rebalanceLiquidity"; reason: string; fromStrategyId?: string; toStrategyId: string; improvementBps: number; pair?: string; positionTokenId?: string }
+  | { kind: "hold"; reason: string; currentStrategyId?: string; improvementBps: number; pair?: string };
 
 export type AutopilotDecision = {
   intent: AutopilotIntent;
@@ -152,15 +208,10 @@ export type AutopilotDecision = {
   decisionHash: `0x${string}`;
   summary: string;
   createdAt: string;
+  execution: DecisionExecutionMeta;
   deployment?: DeploymentConfig;
-  erc8004: {
-    agentId: string;
-    registries: {
-      reputationRegistry?: `0x${string}`;
-      validationRegistry?: `0x${string}`;
-      autopilotPolicy?: `0x${string}`;
-    };
-  };
+  erc8004: Erc8004Binding;
+  benchmark: BenchmarkProof;
   track: {
     primary: "AI x RWA";
     secondary: "Consumer & Viral DApps";

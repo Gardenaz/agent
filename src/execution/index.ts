@@ -1,263 +1,268 @@
-import { createPublicClient, createWalletClient, encodeFunctionData, http, parseEther, type Address } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { mantle } from "viem/chains";
-import type { AutopilotDecision, CropId } from "../types";
-
-const VAULT_EXECUTION_ABI = [
-  {
-    type: "function",
-    name: "openPositionFor",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "user", type: "address" },
-      { name: "cropKey", type: "string" },
-      { name: "principal", type: "uint256" },
-      { name: "decisionHash", type: "bytes32" },
-    ],
-    outputs: [{ name: "positionId", type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "rebalancePosition",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "positionId", type: "uint256" },
-      { name: "newCropKey", type: "string" },
-      { name: "decisionHash", type: "bytes32" },
-    ],
-    outputs: [{ name: "nextAssetAmount", type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "closePosition",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "positionId", type: "uint256" },
-      { name: "decisionHash", type: "bytes32" },
-    ],
-    outputs: [{ name: "harvestedValue", type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "isVaultOperator",
-    stateMutability: "view",
-    inputs: [
-      { name: "owner", type: "address" },
-      { name: "operator", type: "address" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-  },
-  {
-    type: "function",
-    name: "cashBalance",
-    stateMutability: "view",
-    inputs: [{ name: "", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-] as const;
+import { createPublicClient, http } from "viem";
+import { resolveAgniContracts } from "../agni/addresses";
+import { prepareLiquidityExecution } from "../agni/liquidity";
+import { prepareSwapExecution } from "../agni/swap";
+import type { Address, AutopilotDecision } from "../types";
+import { relayApproval, relayRawTx } from "../relayer";
 
 export type RealExecutionRequest = {
   decision: AutopilotDecision;
-  userAddr: `0x${string}`;
+  userAddr: Address;
   amount?: string;
-  currentPositionId?: number;
 };
 
-type Operation = "open" | "rebalance" | "close";
+type Operation = "swap" | "addLiquidity" | "removeLiquidity" | "rebalanceLiquidity";
+
+type ExecutionApproval = {
+  token: Address;
+  spender: Address;
+  amount: string;
+  calldata: `0x${string}`;
+};
 
 type ExecutionPreview = {
-  operation: Operation;
-  functionName: "openPositionFor" | "rebalancePosition" | "closePosition";
-  args: readonly unknown[];
+  strategyId: string;
+  pair?: string;
+  asset: string;
+  amount: string;
+  user: Address;
+  tokenIn?: string;
+  tokenOut?: string;
+  quotedInputAmount?: string;
+  quotedOutputAmount?: string;
+  minimumOutputAmount?: string;
+  feeTier?: number;
+  slippageBps?: number;
+  deadline?: number;
 };
 
 export type RealExecutionResult =
-  | { enabled: false; mode: "disabled" | "blocked"; note: string; operation: null }
-  | {
-    enabled: true;
-    mode: "prepared";
-    operation: Operation;
-    note: string;
-    calldata: `0x${string}`;
-    target: `0x${string}`;
-    preview: ExecutionPreview;
+  | { enabled: false; mode: "disabled"; note: string; operation: Operation | null; target?: Address }
+  | { enabled: false; mode: "blocked"; note: string; operation: Operation; target: Address; calldata: `0x${string}`; approval: ExecutionApproval; preview?: ExecutionPreview }
+  | { enabled: true; mode: "prepared"; note: string; operation: Operation; target: Address; calldata: `0x${string}`; preview: ExecutionPreview }
+  | { enabled: true; mode: "sent"; note: string; operation: Operation; target: Address; executionTxHash: `0x${string}`; preview: ExecutionPreview };
+
+export type ManagedExecutionSendResult =
+  | { enabled: false; mode: "disabled"; note: string }
+  | { enabled: true; mode: "sent"; note: string; stage: "approval" | "execution"; txHash: `0x${string}` };
+
+function operationFor(decision: AutopilotDecision): Operation | null {
+  switch (decision.action.kind) {
+    case "swap":
+      return "swap";
+    case "addLiquidity":
+      return "addLiquidity";
+    case "removeLiquidity":
+      return "removeLiquidity";
+    case "rebalanceLiquidity":
+      return "rebalanceLiquidity";
+    default:
+      return null;
   }
-  | {
-    enabled: true;
-    mode: "sent";
-    operation: Operation;
-    note: string;
-    executionTxHash: `0x${string}`;
-    preview: ExecutionPreview;
+}
+
+function previewBase(request: RealExecutionRequest): Omit<ExecutionPreview, "tokenIn" | "tokenOut" | "quotedInputAmount" | "quotedOutputAmount" | "minimumOutputAmount" | "feeTier" | "slippageBps" | "deadline"> {
+  return {
+    strategyId: request.decision.selectedOpportunity.strategyId,
+    pair: request.decision.execution.pair,
+    asset: request.decision.selectedOpportunity.asset,
+    amount: request.amount ?? request.decision.intent.amount,
+    user: request.userAddr,
   };
-
-const mantleSepolia = {
-  id: 5003,
-  name: "Mantle Sepolia",
-  nativeCurrency: { decimals: 18, name: "MNT", symbol: "MNT" },
-  rpcUrls: { default: { http: ["https://rpc.sepolia.mantle.xyz"] } },
-} as const;
-
-function chainFor(chainId: number) {
-  if (chainId === mantle.id) return mantle;
-  return mantleSepolia;
-}
-
-function strategyIdToCropKey(strategyId: string): CropId {
-  if (strategyId.includes("boost")) return "boost";
-  if (strategyId.includes("growth")) return "growth";
-  return "steady";
-}
-
-function resolveRpcUrl() {
-  return process.env.MANTLE_RPC_URL ?? process.env.RPC_URL ?? process.env.NEXT_PUBLIC_MANTLE_RPC_URL;
-}
-
-function resolveExecutorAddress(): Address | undefined {
-  const privateKey = process.env.RELAYER_PRIVATE_KEY as `0x${string}` | undefined;
-  if (!privateKey) return undefined;
-  return privateKeyToAccount(privateKey).address;
-}
-
-async function ensureOperatorAuthorized(vaultAddress: Address, user: Address, executor: Address): Promise<boolean> {
-  const rpcUrl = resolveRpcUrl();
-  if (!rpcUrl) throw new Error("MANTLE_RPC_URL or RPC_URL required for vault execution");
-  const client = createPublicClient({ transport: http(rpcUrl) });
-  return client.readContract({
-    address: vaultAddress,
-    abi: VAULT_EXECUTION_ABI,
-    functionName: "isVaultOperator",
-    args: [user, executor],
-  }) as Promise<boolean>;
-}
-
-async function readCashBalance(vaultAddress: Address, user: Address): Promise<bigint> {
-  const rpcUrl = resolveRpcUrl();
-  if (!rpcUrl) throw new Error("MANTLE_RPC_URL or RPC_URL required for vault execution");
-  const client = createPublicClient({ transport: http(rpcUrl) });
-  return client.readContract({
-    address: vaultAddress,
-    abi: VAULT_EXECUTION_ABI,
-    functionName: "cashBalance",
-    args: [user],
-  }) as Promise<bigint>;
-}
-
-function buildExecutionPreview(request: RealExecutionRequest): ExecutionPreview | null {
-  const { decision, currentPositionId } = request;
-  const amount = parseEther(request.amount ?? decision.intent.amount ?? "0");
-
-  if (decision.action.kind === "open") {
-    return {
-      operation: "open",
-      functionName: "openPositionFor",
-      args: [request.userAddr, strategyIdToCropKey(decision.action.toStrategyId), amount, decision.decisionHash],
-    };
-  }
-
-  if (decision.action.kind === "rebalance") {
-    if (!currentPositionId) {
-      throw new Error("currentPositionId required for rebalance execution");
-    }
-    return {
-      operation: "rebalance",
-      functionName: "rebalancePosition",
-      args: [BigInt(currentPositionId), strategyIdToCropKey(decision.action.toStrategyId), decision.decisionHash],
-    };
-  }
-
-  if (decision.action.kind === "close") {
-    if (!currentPositionId) {
-      throw new Error("currentPositionId required for close execution");
-    }
-    return {
-      operation: "close",
-      functionName: "closePosition",
-      args: [BigInt(currentPositionId), decision.decisionHash],
-    };
-  }
-
-  return null;
 }
 
 export async function executeRealRoute(request: RealExecutionRequest): Promise<RealExecutionResult> {
-  const enabled = process.env.EXECUTION_ENABLED === "true";
-  if (!enabled) return { enabled: false, mode: "disabled", note: "EXECUTION_ENABLED disabled", operation: null };
-
-  const vaultAddress = request.decision.deployment?.contracts.gardenRwaMockVault;
-  if (!vaultAddress) {
-    return { enabled: false, mode: "blocked", note: "GardenRwaMockVault address missing", operation: null };
-  }
-
-  const preview = buildExecutionPreview(request);
-  if (!preview) {
-    return { enabled: false, mode: "disabled", note: "decision action does not require execution", operation: null };
-  }
-
-  const executor = resolveExecutorAddress();
-  if (executor) {
-    const authorized = await ensureOperatorAuthorized(vaultAddress, request.userAddr, executor);
-    if (!authorized) {
-      return {
-        enabled: false,
-        mode: "blocked",
-        note: `executor ${executor} is not approved as vault operator for ${request.userAddr}`,
-        operation: null,
-      };
-    }
-  }
-
-  if (preview.operation === "open") {
-    const requestedAmount = parseEther(request.amount ?? request.decision.intent.amount ?? "0");
-    const cashBalance = await readCashBalance(vaultAddress, request.userAddr);
-    if (cashBalance < requestedAmount) {
-      return {
-        enabled: false,
-        mode: "blocked",
-        note: `vault cash balance ${cashBalance.toString()} is below requested amount ${requestedAmount.toString()}`,
-        operation: null,
-      };
-    }
-  }
-
-  const calldata = encodeFunctionData({
-    abi: VAULT_EXECUTION_ABI,
-    functionName: preview.functionName,
-    args: preview.args as never,
-  });
-
-  const privateKey = process.env.RELAYER_PRIVATE_KEY as `0x${string}` | undefined;
-  if (!privateKey) {
+  const operation = operationFor(request.decision);
+  if (!operation) {
     return {
-      enabled: true,
-      mode: "prepared",
-      operation: preview.operation,
-      note: "Prepared vault calldata; RELAYER_PRIVATE_KEY missing",
-      calldata,
-      target: vaultAddress,
-      preview,
+      enabled: false,
+      mode: "disabled",
+      note: "Decision action does not require Agni execution.",
+      operation: null,
+      target: request.decision.selectedOpportunity.protocolAddress,
     };
   }
 
-  const chain = chainFor(request.decision.deployment?.chainId ?? mantleSepolia.id);
-  const rpcUrl = resolveRpcUrl();
-  if (!rpcUrl) throw new Error("MANTLE_RPC_URL or RPC_URL required for vault execution");
-  const account = privateKeyToAccount(privateKey);
-  const wallet = createWalletClient({ account, chain, transport: http(rpcUrl) });
-  const executionTxHash = await wallet.sendTransaction({
-    to: vaultAddress,
-    data: calldata,
-    value: 0n,
-    chain,
-    account,
+  const rpcUrl = process.env.MANTLE_RPC_URL ?? process.env.RPC_URL ?? process.env.MANTLE_MAINNET_RPC_URL;
+  const contracts = resolveAgniContracts(request.decision.deployment?.chainId);
+
+  if (operation === "swap") {
+    const prepared = await prepareSwapExecution({
+      meta: request.decision.execution,
+      userAddr: request.userAddr,
+      amount: request.amount ?? request.decision.intent.amount,
+      swapRouter: contracts.swapRouter,
+      quoterV2: contracts.quoterV2,
+      rpcUrl,
+    });
+
+    if (prepared.status === "disabled") {
+      return {
+        enabled: false,
+        mode: "disabled",
+        note: prepared.note,
+        operation,
+        target: contracts.swapRouter,
+      };
+    }
+
+    if (prepared.status === "blocked") {
+      return {
+        enabled: false,
+        mode: "blocked",
+        note: prepared.note,
+        operation,
+        target: prepared.target,
+        calldata: prepared.calldata,
+        approval: prepared.approval,
+        preview: prepared.preview
+          ? {
+            ...previewBase(request),
+            tokenIn: prepared.preview.tokenIn.symbol,
+            tokenOut: prepared.preview.tokenOut.symbol,
+            quotedInputAmount: prepared.preview.quotedInputAmount,
+            quotedOutputAmount: prepared.preview.quotedOutputAmount,
+            minimumOutputAmount: prepared.preview.minimumOutputAmount,
+            feeTier: prepared.preview.feeTier,
+            slippageBps: prepared.preview.slippageBps,
+            deadline: prepared.preview.deadline,
+          }
+          : undefined,
+      };
+    }
+
+    return {
+      enabled: true,
+      mode: "prepared",
+      note: prepared.note,
+      operation,
+      target: prepared.target,
+      calldata: prepared.calldata,
+      preview: {
+        ...previewBase(request),
+        tokenIn: prepared.preview.tokenIn.symbol,
+        tokenOut: prepared.preview.tokenOut.symbol,
+        quotedInputAmount: prepared.preview.quotedInputAmount,
+        quotedOutputAmount: prepared.preview.quotedOutputAmount,
+        minimumOutputAmount: prepared.preview.minimumOutputAmount,
+        feeTier: prepared.preview.feeTier,
+        slippageBps: prepared.preview.slippageBps,
+        deadline: prepared.preview.deadline,
+      },
+    };
+  }
+
+  const disabledLiquidity = await prepareLiquidityExecution({
+    meta: request.decision.execution,
+    operation,
+    positionManager: contracts.nonfungiblePositionManager,
   });
+
+  return {
+    enabled: false,
+    mode: "disabled",
+    note: disabledLiquidity.note,
+    operation,
+    target: disabledLiquidity.target,
+  };
+}
+
+export function canUseManagedExecution(decision: AutopilotDecision) {
+  if (decision.intent.policy.executionAuthority !== "managed") {
+    return { allow: false, reason: "Managed execution not enabled for this policy." } as const;
+  }
+
+  const relayerExecutor = process.env.RELAYER_EXECUTOR_ADDRESS;
+  if (!relayerExecutor || !/^0x[a-fA-F0-9]{40}$/.test(relayerExecutor)) {
+    return { allow: false, reason: "RELAYER_EXECUTOR_ADDRESS missing for managed execution." } as const;
+  }
+
+  if (decision.intent.user.toLowerCase() !== relayerExecutor.toLowerCase()) {
+    return {
+      allow: false,
+      reason: "Managed executor wallet must be the same wallet that owns the funds for this Agni route.",
+    } as const;
+  }
+
+  return { allow: true, executor: relayerExecutor as Address } as const;
+}
+
+export async function executeManagedRoute(request: RealExecutionRequest): Promise<ManagedExecutionSendResult> {
+  const authority = canUseManagedExecution(request.decision);
+  if (!authority.allow) {
+    return { enabled: false, mode: "disabled", note: authority.reason };
+  }
+
+  const prepared = await executeRealRoute(request);
+  if (prepared.mode === "disabled") {
+    return { enabled: false, mode: "disabled", note: prepared.note };
+  }
+
+  if (prepared.mode === "blocked") {
+    const approval = await relayApproval({
+      tokenAddress: prepared.approval.token,
+      spender: prepared.approval.spender,
+      amount: BigInt(prepared.approval.amount),
+      chainId: request.decision.deployment?.chainId,
+    });
+
+    const rpcUrl = process.env.MANTLE_MAINNET_RPC_URL ?? process.env.MANTLE_RPC_URL ?? process.env.RPC_URL;
+    if (rpcUrl) {
+      const chainId = request.decision.deployment?.chainId ?? 5003;
+      const publicClient = createPublicClient({
+        transport: http(rpcUrl),
+        chain: chainId === 5000
+          ? { id: 5000, name: "Mantle", nativeCurrency: { name: "MNT", symbol: "MNT", decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } } }
+          : { id: 5003, name: "Mantle Sepolia", nativeCurrency: { name: "MNT", symbol: "MNT", decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } } },
+      });
+      await publicClient.waitForTransactionReceipt({ hash: approval.txHash });
+
+      const retried = await executeRealRoute(request);
+      if (retried.mode === "prepared") {
+        const execution = await relayRawTx({
+          to: retried.target,
+          data: retried.calldata,
+          chainId: request.decision.deployment?.chainId,
+        });
+        return {
+          enabled: true,
+          mode: "sent",
+          note: "Managed executor approved the token and sent the Agni move.",
+          stage: "execution",
+          txHash: execution.txHash,
+        };
+      }
+    }
+
+    return {
+      enabled: true,
+      mode: "sent",
+      note: "Managed executor sent token approval. The next managed execution request can continue the Agni move.",
+      stage: "approval",
+      txHash: approval.txHash,
+    };
+  }
+
+  if (prepared.mode === "prepared") {
+    const execution = await relayRawTx({
+      to: prepared.target,
+      data: prepared.calldata,
+      chainId: request.decision.deployment?.chainId,
+    });
+    return {
+      enabled: true,
+      mode: "sent",
+      note: "Managed executor sent the Agni move.",
+      stage: "execution",
+      txHash: execution.txHash,
+    };
+  }
 
   return {
     enabled: true,
     mode: "sent",
-    operation: preview.operation,
-    note: "Vault-native autopilot transaction sent by backend relayer",
-    executionTxHash,
-    preview,
+    note: prepared.note,
+    stage: "execution",
+    txHash: prepared.executionTxHash,
   };
 }

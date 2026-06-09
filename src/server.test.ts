@@ -11,7 +11,10 @@ describe("Gardena agent HTTP service", () => {
     assert.equal(intent.mode, "autopilot");
     assert.equal(intent.currentStrategyId, undefined);
     assert.equal(intent.policy.maxRiskLevel, 2);
-    assert.equal(intent.policy.allowedProtocols.length, 1);
+    assert.equal(intent.policy.executionAuthority, "wallet");
+    assert.equal(intent.policy.oracleHeartbeatSeconds, 900);
+    assert.ok(intent.policy.allowedProtocols.length >= 1);
+    assert.deepEqual(intent.policy.allowedExecutors, [user]);
     assert.match(intent.policy.allowedProtocols[0] ?? "", /^0x[a-fA-F0-9]{40}$/);
   });
 
@@ -86,6 +89,35 @@ describe("Gardena agent HTTP service", () => {
       assert.equal(json.source, "agent-service");
       assert.match(json.decision.decisionHash, /^0x[0-9a-f]{64}$/);
       assert.equal(json.anchor.enabled, false);
+    } finally {
+      service.close();
+    }
+  });
+
+  it("serves /live/readiness without crashing when relayer env is incomplete", async () => {
+    const service = createAgentService();
+    await new Promise<void>((resolve) => service.listen(0, resolve));
+    const address = service.address();
+    assert.equal(typeof address, "object");
+    if (!address || typeof address !== "object") throw new Error("missing server address");
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${address.port}/live/readiness`);
+      const json = await res.json() as {
+        ok: boolean;
+        readiness: {
+          chainId: number;
+          relayer: { enabled: boolean };
+          benchmarking: { status: string; notes: string[] };
+        };
+      };
+
+      assert.equal(res.status, 200);
+      assert.equal(json.ok, true);
+      assert.equal(typeof json.readiness.chainId, "number");
+      assert.equal(typeof json.readiness.relayer.enabled, "boolean");
+      assert.ok(Array.isArray(json.readiness.benchmarking.notes));
+      assert.match(json.readiness.benchmarking.status, /ready|partial|blocked/);
     } finally {
       service.close();
     }

@@ -12,11 +12,7 @@ const context: AgentContext = {
     contracts: {
       agentIdentity: "0x1111111111111111111111111111111111111111",
       decisionLog: "0x2222222222222222222222222222222222222222",
-      riskPolicy: "0x3333333333333333333333333333333333333333",
-      reputationRegistry: "0x4444444444444444444444444444444444444444",
-      validationRegistry: "0x5555555555555555555555555555555555555555",
       autopilotPolicy: "0x6666666666666666666666666666666666666666",
-      gardenRwaMockVault: vaultAddress,
     },
   },
 };
@@ -35,7 +31,11 @@ const baseIntent: AutopilotIntent = {
     maxTxAmount: 5_000,
     maxRiskLevel: 2,
     rebalanceIntervalSeconds: 3600,
+    oracleHeartbeatSeconds: 900,
     allowedProtocols: [vaultAddress],
+    allowedExecutors: ["0x7777777777777777777777777777777777777777"],
+    allowedStrategies: [],
+    executionAuthority: "wallet",
   },
 };
 
@@ -46,6 +46,9 @@ const opportunities: YieldOpportunity[] = [
     protocol: "Mantle Lending Route",
     protocolAddress: vaultAddress,
     asset: "USDC",
+    actionType: "swap",
+    executionKind: "swap",
+    pair: "USDC/USDY",
     expectedApyBps: 420,
     riskLevel: 1,
     liquidityUsd: 1_000_000,
@@ -59,6 +62,9 @@ const opportunities: YieldOpportunity[] = [
     protocol: "Mantle Liquidity Route",
     protocolAddress: vaultAddress,
     asset: "USDC/mETH",
+    actionType: "addLiquidity",
+    executionKind: "liquidity",
+    pair: "USDC/mETH",
     expectedApyBps: 980,
     riskLevel: 2,
     liquidityUsd: 800_000,
@@ -72,6 +78,9 @@ const opportunities: YieldOpportunity[] = [
     protocol: "Mantle Yield Vault Route",
     protocolAddress: vaultAddress,
     asset: "USDC",
+    actionType: "addLiquidity",
+    executionKind: "liquidity",
+    pair: "USDC/mETH",
     expectedApyBps: 2_100,
     riskLevel: 3,
     liquidityUsd: 250_000,
@@ -82,7 +91,7 @@ const opportunities: YieldOpportunity[] = [
 ];
 
 describe("Gardena autopilot LangGraph", () => {
-  it("opens a new position when vault cash exists and no current strategy is set", async () => {
+  it("emits Agni-first addLiquidity when no current strategy is set", async () => {
     const decision = await runAutopilotTick(
       {
         ...baseIntent,
@@ -91,23 +100,22 @@ describe("Gardena autopilot LangGraph", () => {
       { ...context, yieldOpportunities: opportunities },
     );
 
-    assert.equal(decision.action.kind, "open");
-    assert.match(decision.summary, /new position/i);
+    assert.equal(decision.action.kind, "addLiquidity");
+    assert.match(decision.summary, /new agni position/i);
   });
 
-  it("observes live yield opportunities, ranks them, and approves best policy-safe rebalance", async () => {
+  it("observes live yield opportunities, ranks them, and approves Agni-first rebalanceLiquidity", async () => {
     const decision = await runAutopilotTick(baseIntent, { ...context, yieldOpportunities: opportunities });
 
     assert.equal(decision.intent.mode, "autopilot");
     assert.equal(decision.policy.status, "approved");
     assert.equal(decision.selectedOpportunity.strategyId, "growth-lp-usdc-meth");
-    assert.equal(decision.action.kind, "rebalance");
+    assert.equal(decision.action.kind, "rebalanceLiquidity");
     assert.ok(decision.action.reason.includes("risk-adjusted return"));
     assert.match(decision.decisionHash, /^0x[0-9a-f]{64}$/);
     assert.equal(decision.erc8004.agentId, "1");
     assert.deepEqual(decision.erc8004.registries, {
-      reputationRegistry: "0x4444444444444444444444444444444444444444",
-      validationRegistry: "0x5555555555555555555555555555555555555555",
+      agentIdentity: "0x1111111111111111111111111111111111111111",
       autopilotPolicy: "0x6666666666666666666666666666666666666666",
     });
   });
@@ -119,8 +127,8 @@ describe("Gardena autopilot LangGraph", () => {
     );
 
     assert.equal(decision.policy.status, "blocked");
-    assert.equal(decision.action.kind, "close");
-    assert.ok(decision.summary.includes("closing"));
+    assert.equal(decision.action.kind, "hold");
+    assert.ok(decision.summary.includes("blocked"));
   });
 
   it("closes when the current strategy is no longer allowed by policy", async () => {
@@ -141,8 +149,8 @@ describe("Gardena autopilot LangGraph", () => {
     );
 
     assert.equal(decision.policy.status, "blocked");
-    assert.equal(decision.action.kind, "close");
-    assert.match(decision.summary, /closing/i);
+    assert.equal(decision.action.kind, "hold");
+    assert.match(decision.summary, /blocked/i);
   });
 
   it("holds current strategy when improvement is below threshold", async () => {
@@ -162,7 +170,7 @@ describe("Gardena autopilot LangGraph", () => {
 
     assert.equal(typeof graph.invoke, "function");
     assert.equal(state.selectedOpportunity?.strategyId, "growth-lp-usdc-meth");
-    assert.equal(state.decision?.action.kind, "rebalance");
+    assert.equal(state.decision?.action.kind, "rebalanceLiquidity");
   });
 
   it("defaults to AI x RWA opportunities with USDY and mETH consumer garden metadata", async () => {
@@ -181,8 +189,8 @@ describe("Gardena autopilot LangGraph", () => {
 
     assert.ok(assets.includes("USDY"));
     assert.ok(assets.includes("mETH"));
-    assert.ok(protocols.includes("Mantle RWA USDY Route"));
-    assert.ok(protocols.includes("Mantle mETH Yield Route"));
+    assert.ok(protocols.includes("Agni Swap Router"));
+    assert.ok(protocols.includes("Agni Position Manager"));
     assert.ok(themes.includes("Rice / Safe Harvest"));
     assert.ok(themes.includes("Corn / Growth Field"));
     assert.equal(decision.track.primary, "AI x RWA");
@@ -203,5 +211,27 @@ describe("Gardena autopilot LangGraph", () => {
     assert.ok(decision.aiAdvisor.riskNotes.length > 0);
     assert.equal(decision.aiAdvisor.recommendedStrategyId, decision.selectedOpportunity.strategyId);
     assert.match(decision.aiAdvisor.confidenceReason, /policy/i);
+  });
+
+  it("blocks managed execution when the selected executor wallet does not match the user wallet", async () => {
+    const originalExecutor = process.env.RELAYER_EXECUTOR_ADDRESS;
+    try {
+      process.env.RELAYER_EXECUTOR_ADDRESS = "0x8888888888888888888888888888888888888888";
+
+      const decision = await runAutopilotTick({
+        ...baseIntent,
+        policy: {
+          ...baseIntent.policy,
+          executionAuthority: "managed",
+          allowedExecutors: ["0x8888888888888888888888888888888888888888"],
+        },
+      }, { ...context, yieldOpportunities: opportunities });
+
+      assert.equal(decision.policy.status, "blocked");
+      assert.equal(decision.action.kind, "hold");
+      assert.match(decision.policy.reason, /managed executor wallet/i);
+    } finally {
+      process.env.RELAYER_EXECUTOR_ADDRESS = originalExecutor;
+    }
   });
 });

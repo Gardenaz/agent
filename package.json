@@ -17,6 +17,7 @@
     "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
+    "@gardenaz/agent-types": "^0.1.0",
     "@langchain/core": "latest",
     "@langchain/langgraph": "latest",
     "@langchain/openai": "latest",

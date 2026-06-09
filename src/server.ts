@@ -2,26 +2,28 @@ import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
+import type { OutcomeRecordRequest } from "@gardenaz/agent-types";
 import { runAutopilotTick } from "./autopilot";
 import { plantGarden, type GardenRequest } from "./garden-agent";
 import { loadDeploymentConfig } from "./config/contracts";
 import { resolveAllowedProtocols } from "./config/routes";
-import { anchorDecision } from "./relayer";
-import { executeRealRoute } from "./execution";
+import { anchorDecision, recordDecisionOutcome, recordPolicyExecution } from "./relayer";
+import { executeManagedRoute, executeRealRoute } from "./execution";
 import { logger } from "./logger";
-import { createPublicClient, http, keccak256, stringToHex, type Address } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { getAgentLiveReadiness } from "./readiness";
 import type { AutopilotIntent, AutopilotPolicyInput, RiskLevel } from "./types";
 
 type AutopilotDecision = Awaited<ReturnType<typeof runAutopilotTick>>;
 
 type AutopilotWorkerConfig = {
   enabled: boolean;
+  user?: `0x${string}`;
   crop: "steady" | "growth" | "boost";
   amount: string;
   riskPreference: RiskLevel;
   intervalMs: number;
   execute: boolean;
+  executionAuthority: "wallet" | "managed";
 };
 
 let autopilotWorkerTimer: NodeJS.Timeout | null = null;
@@ -60,15 +62,11 @@ type PlanRequest = {
   crop?: "steady" | "growth" | "boost";
   agentId?: string;
   currentStrategyId?: string;
-  currentPositionId?: number;
+  currentPositionId?: string;
   minImprovementBps?: number;
   policy?: Partial<AutopilotPolicyInput>;
   anchor?: boolean;
   execute?: boolean;
-  inputAsset?: string;
-  outputAsset?: string;
-  inputAmount?: string;
-  slippageBps?: number;
 };
 
 type GardenPlanRequest = PlanRequest & {
@@ -123,95 +121,6 @@ function buildAssistantMessages(request: GardenChatRequest) {
   ];
 }
 
-const GARDEN_RWA_VAULT_ABI = [
-  {
-    type: "event",
-    name: "CashDeposited",
-    inputs: [
-      { name: "caller", type: "address", indexed: true },
-      { name: "user", type: "address", indexed: true },
-      { name: "amount", type: "uint256", indexed: false },
-    ],
-    anonymous: false,
-  },
-  {
-    type: "event",
-    name: "PositionPlanted",
-    inputs: [
-      { name: "positionId", type: "uint256", indexed: true },
-      { name: "owner", type: "address", indexed: true },
-      { name: "cropKeyHash", type: "bytes32", indexed: true },
-      { name: "principal", type: "uint256", indexed: false },
-      { name: "assetAmount", type: "uint256", indexed: false },
-      { name: "plantedPrice", type: "uint256", indexed: false },
-    ],
-    anonymous: false,
-  },
-  {
-    type: "function",
-    name: "positionCount",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "positions",
-    stateMutability: "view",
-    inputs: [{ name: "", type: "uint256" }],
-    outputs: [
-      { name: "owner", type: "address" },
-      { name: "cropKeyHash", type: "bytes32" },
-      { name: "principal", type: "uint256" },
-      { name: "assetAmount", type: "uint256" },
-      { name: "plantedPrice", type: "uint256" },
-      { name: "harvestedValue", type: "uint256" },
-      { name: "plantedAt", type: "uint256" },
-      { name: "lastRebalancedAt", type: "uint256" },
-      { name: "harvestedAt", type: "uint256" },
-      { name: "harvested", type: "bool" },
-    ],
-  },
-  {
-    type: "function",
-    name: "activePositionIdsOf",
-    stateMutability: "view",
-    inputs: [{ name: "user", type: "address" }],
-    outputs: [{ name: "", type: "uint256[]" }],
-  },
-  {
-    type: "function",
-    name: "cashBalance",
-    stateMutability: "view",
-    inputs: [{ name: "", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "currentValue",
-    stateMutability: "view",
-    inputs: [{ name: "positionId", type: "uint256" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-] as const;
-
-const AUTOPILOT_POLICY_ABI = [
-  {
-    type: "function",
-    name: "canExecute",
-    stateMutability: "view",
-    inputs: [
-      { name: "user", type: "address" },
-      { name: "executor", type: "address" },
-      { name: "protocol", type: "address" },
-      { name: "strategyId", type: "bytes32" },
-      { name: "amount", type: "uint256" },
-      { name: "riskLevel", type: "uint8" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-  },
-] as const;
-
 export function parseAutopilotWorkerConfig(env: NodeJS.ProcessEnv = process.env): AutopilotWorkerConfig | null {
   if (env.AUTOPILOT_WORKER_ENABLED !== "true") return null;
 
@@ -219,221 +128,18 @@ export function parseAutopilotWorkerConfig(env: NodeJS.ProcessEnv = process.env)
   const amount = String(env.AUTOPILOT_WORKER_AMOUNT ?? "1000");
   const riskPreference = Number(env.AUTOPILOT_WORKER_RISK_LEVEL ?? "1") as RiskLevel;
   const intervalSeconds = Number(env.AUTOPILOT_WORKER_INTERVAL_SECONDS ?? "300");
+  const user = env.AUTOPILOT_WORKER_USER;
+  const executionAuthority = env.AUTOPILOT_WORKER_EXECUTION_AUTHORITY === "managed" ? "managed" : "wallet";
 
   return {
     enabled: true,
+    user: /^0x[a-fA-F0-9]{40}$/.test(user ?? "") ? user as `0x${string}` : undefined,
     crop,
     amount,
     riskPreference: Number.isFinite(riskPreference) ? riskPreference : 1,
     intervalMs: Math.max(30_000, Math.floor(intervalSeconds * 1000)),
     execute: env.AUTOPILOT_WORKER_EXECUTE !== "false",
-  };
-}
-
-function resolveWorkerRpcUrl(env: NodeJS.ProcessEnv = process.env): string | undefined {
-  return env.MANTLE_RPC_URL ?? env.RPC_URL ?? env.NEXT_PUBLIC_MANTLE_RPC_URL;
-}
-
-function resolveWorkerProtocolAddress(
-  deployment: NonNullable<ReturnType<typeof loadDeploymentConfig>>,
-): Address | undefined {
-  return deployment.contracts.gardenRwaMockVault;
-}
-
-function strategyIdFromCrop(crop: "steady" | "growth" | "boost"): string {
-  if (crop === "growth") return "growth-meth-yield";
-  if (crop === "boost") return "boost-rwa-meth-dynamic";
-  return "steady-rwa-usdy";
-}
-
-function strategyIdToBytes32(strategyId: string): `0x${string}` {
-  const bytes = Buffer.from(strategyId, "utf8").subarray(0, 32);
-  return `0x${bytes.toString("hex").padEnd(64, "0")}` as `0x${string}`;
-}
-
-function cropFromHash(hash: `0x${string}`): "steady" | "growth" | "boost" {
-  if (hash === keccak256(stringToHex("growth"))) return "growth";
-  if (hash === keccak256(stringToHex("boost"))) return "boost";
-  return "steady";
-}
-
-function resolveExecutorAddress(): Address | undefined {
-  const privateKey = process.env.RELAYER_PRIVATE_KEY;
-  if (!privateKey || !/^0x[0-9a-fA-F]{64}$/.test(privateKey)) return undefined;
-  return privateKeyToAccount(privateKey as `0x${string}`).address;
-}
-
-type VaultPositionSnapshot = {
-  positionId: number;
-  owner: Address;
-  cropKeyHash: `0x${string}`;
-  cropKey: "steady" | "growth" | "boost";
-  principal: bigint;
-  currentValue: bigint;
-  harvested: boolean;
-};
-
-type VaultUserSnapshot = {
-  user: Address;
-  cashBalance: bigint;
-  activePositions: VaultPositionSnapshot[];
-};
-
-async function passesOnchainPolicy(
-  deployment: NonNullable<ReturnType<typeof loadDeploymentConfig>>,
-  user: Address,
-  strategyId: string,
-  amount: string,
-  riskLevel: RiskLevel,
-): Promise<boolean> {
-  const policyAddress = deployment.contracts.autopilotPolicy;
-  if (!policyAddress) return true;
-
-  const rpcUrl = resolveWorkerRpcUrl();
-  if (!rpcUrl) {
-    throw new Error("MANTLE_RPC_URL or RPC_URL required to read autopilot policy");
-  }
-
-  const protocol = resolveWorkerProtocolAddress(deployment);
-  if (!protocol) {
-    logger.warn({ user }, "autopilot worker policy skipped: protocol address missing");
-    return false;
-  }
-
-  const executor = resolveExecutorAddress();
-  if (!executor) {
-    logger.warn({ user }, "autopilot worker policy skipped: executor address missing");
-    return false;
-  }
-
-  const client = createPublicClient({
-    transport: http(rpcUrl),
-  });
-
-  return client.readContract({
-    address: policyAddress,
-    abi: AUTOPILOT_POLICY_ABI,
-    functionName: "canExecute",
-    args: [user, executor, protocol, strategyIdToBytes32(strategyId), BigInt(amount || "0"), riskLevel],
-  }) as Promise<boolean>;
-}
-
-async function discoverAutopilotWorkerUsers(deployment: NonNullable<ReturnType<typeof loadDeploymentConfig>>): Promise<Array<Address>> {
-  const vaultAddress = deployment.contracts.gardenRwaMockVault;
-  if (!vaultAddress) return [];
-
-  const rpcUrl = resolveWorkerRpcUrl();
-  if (!rpcUrl) {
-    throw new Error("MANTLE_RPC_URL or RPC_URL required to discover autopilot vault users");
-  }
-
-  const client = createPublicClient({
-    transport: http(rpcUrl),
-  });
-
-  const seen = new Set<string>();
-  const users: Array<Address> = [];
-
-  const [cashLogs, plantedLogs] = await Promise.all([
-    client.getContractEvents({
-      address: vaultAddress,
-      abi: GARDEN_RWA_VAULT_ABI,
-      eventName: "CashDeposited",
-      fromBlock: 0n,
-      toBlock: "latest",
-    }),
-    client.getContractEvents({
-      address: vaultAddress,
-      abi: GARDEN_RWA_VAULT_ABI,
-      eventName: "PositionPlanted",
-      fromBlock: 0n,
-      toBlock: "latest",
-    }),
-  ]);
-
-  for (const log of cashLogs) {
-    const user = log.args.user;
-    if (!user) continue;
-    const key = user.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    users.push(user);
-  }
-
-  for (const log of plantedLogs) {
-    const owner = log.args.owner;
-    if (!owner) continue;
-    const key = owner.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    users.push(owner);
-  }
-
-  return users;
-}
-
-async function readVaultUserSnapshot(
-  deployment: NonNullable<ReturnType<typeof loadDeploymentConfig>>,
-  user: Address,
-): Promise<VaultUserSnapshot> {
-  const vaultAddress = deployment.contracts.gardenRwaMockVault;
-  if (!vaultAddress) {
-    return { user, cashBalance: 0n, activePositions: [] };
-  }
-
-  const rpcUrl = resolveWorkerRpcUrl();
-  if (!rpcUrl) {
-    throw new Error("MANTLE_RPC_URL or RPC_URL required to read autopilot vault state");
-  }
-
-  const client = createPublicClient({ transport: http(rpcUrl) });
-  const [cashBalance, activePositionIds] = await Promise.all([
-    client.readContract({
-      address: vaultAddress,
-      abi: GARDEN_RWA_VAULT_ABI,
-      functionName: "cashBalance",
-      args: [user],
-    }) as Promise<bigint>,
-    client.readContract({
-      address: vaultAddress,
-      abi: GARDEN_RWA_VAULT_ABI,
-      functionName: "activePositionIdsOf",
-      args: [user],
-    }) as Promise<bigint[]>,
-  ]);
-
-  const activePositions = await Promise.all(
-    activePositionIds.map(async (positionIdValue) => {
-      const positionId = Number(positionIdValue);
-      const position = await client.readContract({
-        address: vaultAddress,
-        abi: GARDEN_RWA_VAULT_ABI,
-        functionName: "positions",
-        args: [positionIdValue],
-      }) as readonly [Address, `0x${string}`, bigint, bigint, bigint, bigint, bigint, bigint, bigint, boolean];
-      const currentValue = await client.readContract({
-        address: vaultAddress,
-        abi: GARDEN_RWA_VAULT_ABI,
-        functionName: "currentValue",
-        args: [positionIdValue],
-      }) as bigint;
-
-      return {
-        positionId,
-        owner: position[0],
-        cropKeyHash: position[1],
-        cropKey: cropFromHash(position[1]),
-        principal: position[2],
-        currentValue,
-        harvested: position[9],
-      } satisfies VaultPositionSnapshot;
-    }),
-  );
-
-  return {
-    user,
-    cashBalance,
-    activePositions: activePositions.filter((position) => !position.harvested),
+    executionAuthority,
   };
 }
 
@@ -448,97 +154,40 @@ async function runAutopilotWorkerTick(config: AutopilotWorkerConfig) {
       return;
     }
 
-    const users = await discoverAutopilotWorkerUsers(deployment);
-    if (users.length === 0) {
-      logger.info("autopilot worker skipped: no active vault users found");
+    if (!config.user) {
+      logger.warn("autopilot worker skipped: AUTOPILOT_WORKER_USER missing for Agni-first preview mode");
       return;
     }
 
-    for (const user of users) {
-      try {
-        const snapshot = await readVaultUserSnapshot(deployment, user);
-        const executionCandidates = [
-          ...snapshot.activePositions.map((position) => ({
-            user,
-            amount: position.currentValue.toString(),
-            currentStrategyId: strategyIdFromCrop(position.cropKey),
-            currentPositionId: position.positionId,
-            riskPreference: config.riskPreference,
-          })),
-          ...(snapshot.cashBalance > 0n ? [{
-            user,
-            amount: snapshot.cashBalance.toString(),
-            currentStrategyId: undefined,
-            currentPositionId: undefined,
-            riskPreference: config.riskPreference,
-          }] : []),
-        ];
+    const decision = await runAutopilotTick(buildIntent({
+      user: config.user,
+      crop: config.crop,
+      amount: config.amount,
+      riskPreference: config.riskPreference,
+    }), { deployment });
+    const anchor = await anchorDecision(decision);
+    const execution = config.execute
+      ? config.executionAuthority === "managed"
+        ? await executeManagedRoute({
+          decision,
+          userAddr: config.user,
+          amount: config.amount,
+        })
+        : ({ enabled: false, mode: "disabled", note: "autopilot worker wallet mode cannot sign user transactions", operation: null } as const)
+      : ({ enabled: false, mode: "disabled", note: "autopilot worker execute=false", operation: null } as const);
 
-        if (executionCandidates.length === 0) {
-          logger.info({ user }, "autopilot worker skipped: no active positions or idle cash");
-          continue;
-        }
-
-        for (const candidate of executionCandidates) {
-          const decision = await runAutopilotTick(buildIntent({
-            user,
-            crop: config.crop,
-            amount: candidate.amount,
-            riskPreference: candidate.riskPreference,
-            currentStrategyId: candidate.currentStrategyId,
-            currentPositionId: candidate.currentPositionId,
-          }), { deployment });
-
-          const policyAllowed = await passesOnchainPolicy(
-            deployment,
-            user,
-            decision.selectedOpportunity.strategyId,
-            candidate.amount,
-            decision.selectedOpportunity.riskLevel,
-          );
-          if (!policyAllowed) {
-            logger.info(
-              {
-                user,
-                amount: candidate.amount,
-                currentPositionId: candidate.currentPositionId ?? null,
-                riskPreference: candidate.riskPreference,
-                selectedStrategyId: decision.selectedOpportunity.strategyId,
-              },
-              "autopilot worker skipped by on-chain policy",
-            );
-            continue;
-          }
-
-          const anchor = await anchorDecision(decision);
-          const shouldExecute = config.execute && (decision.action.kind === "open" || decision.action.kind === "rebalance" || decision.action.kind === "close");
-          const execution = shouldExecute
-            ? await executeRealRoute({
-              decision,
-              userAddr: user,
-              amount: candidate.amount,
-              currentPositionId: candidate.currentPositionId,
-            })
-            : ({ enabled: false, mode: "disabled", note: "autopilot worker held route or execute=false", operation: null } as const);
-
-          const anchorMode = "mode" in anchor ? anchor.mode : "disabled";
-          logger.info(
-            {
-              user,
-              decisionHash: decision.decisionHash,
-              currentPositionId: candidate.currentPositionId ?? null,
-              anchorMode,
-              executionMode: execution.mode,
-              executionOperation: execution.operation,
-              durationMs: Date.now() - startedAt,
-            },
-            "autopilot worker user tick complete",
-          );
-        }
-      } catch (error) {
-        logger.error({ error, user }, "autopilot worker user tick failed");
-      }
-    }
+    const anchorMode = "mode" in anchor ? anchor.mode : "disabled";
+    logger.info(
+      {
+        user: config.user,
+        decisionHash: decision.decisionHash,
+        anchorMode,
+        executionMode: execution.mode,
+        executionOperation: "operation" in execution ? execution.operation : null,
+        durationMs: Date.now() - startedAt,
+      },
+      "autopilot worker preview tick complete",
+    );
   } catch (error) {
     logger.error({ error, durationMs: Date.now() - startedAt }, "autopilot worker tick failed");
   } finally {
@@ -764,6 +413,8 @@ export function buildIntent(body: PlanRequest): AutopilotIntent {
   const deployment = loadDeploymentConfig();
   const allowedProtocols = resolveAllowedProtocols(deployment);
   const riskPreference = Number(body.riskPreference || 1) as RiskLevel;
+  const executionAuthority = body.policy?.executionAuthority ?? "wallet";
+  const relayerExecutor = process.env.RELAYER_EXECUTOR_ADDRESS;
   return {
     user: body.user,
     agentId: body.agentId ?? "1",
@@ -771,7 +422,6 @@ export function buildIntent(body: PlanRequest): AutopilotIntent {
     riskPreference,
     mode: "autopilot",
     currentStrategyId: body.currentStrategyId,
-    currentPositionId: body.currentPositionId,
     minImprovementBps: body.minImprovementBps ?? 50,
     policy: {
       enabled: body.policy?.enabled ?? true,
@@ -779,7 +429,16 @@ export function buildIntent(body: PlanRequest): AutopilotIntent {
       maxTxAmount: body.policy?.maxTxAmount ?? 5_000,
       maxRiskLevel: body.policy?.maxRiskLevel ?? riskPreference,
       rebalanceIntervalSeconds: body.policy?.rebalanceIntervalSeconds ?? 3600,
+      oracleHeartbeatSeconds: body.policy?.oracleHeartbeatSeconds ?? 900,
       allowedProtocols: body.policy?.allowedProtocols?.length ? body.policy.allowedProtocols : allowedProtocols,
+      allowedExecutors:
+        body.policy?.allowedExecutors?.length
+          ? body.policy.allowedExecutors
+          : executionAuthority === "managed" && /^0x[a-fA-F0-9]{40}$/.test(relayerExecutor ?? "")
+            ? [relayerExecutor as `0x${string}`]
+            : [body.user],
+      allowedStrategies: body.policy?.allowedStrategies?.length ? body.policy.allowedStrategies : [],
+      executionAuthority,
     },
   };
 }
@@ -798,48 +457,13 @@ export function buildGardenRequest(body: GardenPlanRequest): GardenRequest {
 async function buildAutopilotDecisionFromVaultState(
   body: PlanRequest,
   deployment: NonNullable<ReturnType<typeof loadDeploymentConfig>> | undefined,
-): Promise<{ decision: AutopilotDecision; amount: string; currentPositionId?: number }> {
-  const fallbackAmount = String(body.amount ?? "0");
-  const buildFallbackDecision = async () => ({
-    decision: await runAutopilotTick(buildIntent({ ...body, amount: fallbackAmount }), { deployment }),
-    amount: fallbackAmount,
-    currentPositionId: body.currentPositionId,
-  });
-
-  const rpcUrl = resolveWorkerRpcUrl();
-  if (!deployment || !deployment.contracts.gardenRwaMockVault || !rpcUrl) {
-    return buildFallbackDecision();
-  }
-
-  try {
-    const snapshot = await readVaultUserSnapshot(deployment, body.user);
-    const currentPosition =
-      body.currentPositionId != null
-        ? snapshot.activePositions.find((position) => position.positionId === body.currentPositionId)
-        : snapshot.activePositions[0];
-
-    const amount = currentPosition
-      ? currentPosition.currentValue.toString()
-      : snapshot.cashBalance > 0n
-        ? String(body.amount ?? snapshot.cashBalance.toString())
-        : fallbackAmount;
-
-    const decision = await runAutopilotTick(buildIntent({
-      ...body,
-      amount,
-      currentStrategyId: body.currentStrategyId ?? (currentPosition ? strategyIdFromCrop(currentPosition.cropKey) : undefined),
-      currentPositionId: body.currentPositionId ?? currentPosition?.positionId,
-    }), { deployment });
-
-    return {
-      decision,
-      amount,
-      currentPositionId: body.currentPositionId ?? currentPosition?.positionId,
-    };
-  } catch (error) {
-    logger.warn({ error, user: body.user }, "vault state read failed, falling back to stateless autopilot planning");
-    return buildFallbackDecision();
-  }
+): Promise<{ decision: AutopilotDecision; amount: string }> {
+  const amount = String(body.amount ?? "0");
+  const decision = await runAutopilotTick(buildIntent({ ...body, amount }), { deployment });
+  return {
+    decision,
+    amount,
+  };
 }
 
 function toGardenResponse(result: Awaited<ReturnType<typeof plantGarden>>) {
@@ -870,6 +494,15 @@ function toGardenResponse(result: Awaited<ReturnType<typeof plantGarden>>) {
   };
 }
 
+function parseAmount(value?: string) {
+  if (!value) return 0n;
+  try {
+    return BigInt(value);
+  } catch {
+    return 0n;
+  }
+}
+
 async function readJson(req: import("node:http").IncomingMessage) {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(Buffer.from(chunk));
@@ -884,6 +517,16 @@ export function createAgentService() {
       res.end(JSON.stringify({ ok: true, service: "gardena-agent" }));
       return;
     }
+    if (req.method === "GET" && req.url === "/live/readiness") {
+      try {
+        const readiness = await getAgentLiveReadiness();
+        res.end(JSON.stringify({ ok: true, readiness, source: "agent-service" }));
+      } catch (error) {
+        res.statusCode = 502;
+        res.end(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : "failed to read readiness" }));
+      }
+      return;
+    }
     if (req.method === "GET" && req.url === "/mcp/tools/list") {
       res.end(JSON.stringify({
         ok: true,
@@ -891,9 +534,9 @@ export function createAgentService() {
           { name: "plan_autopilot_strategy", description: "Run LangGraph AI advisor plus deterministic policy for autonomous AI x RWA execution" },
           { name: "plan_garden_agent", description: "Translate user intent into moat weather, strategy slots, and safe autonomous strategy plan" },
           { name: "ask_garden_assistant", description: "Answer user questions about the Gardenaz moat app, positions, proof, and strategy shop" },
-          { name: "quote_rwa_route", description: "Preview vault-native autopilot execution against the delegated RWA vault" },
-          { name: "execute_rwa_route", description: "Prepare or send a vault-native delegated autopilot transaction" },
-          { name: "log_decision", description: "Decision logging is performed by the vault during delegated execution" },
+          { name: "quote_agni_route", description: "Preview Agni-first execution for the selected strategy without sending an on-chain trade" },
+          { name: "execute_agni_route", description: "Prepare the Agni-first execution payload when execution wiring is enabled" },
+          { name: "log_decision", description: "Anchor the AI decision into DecisionLog for Mantle benchmarking transparency" },
         ],
       }));
       return;
@@ -941,11 +584,11 @@ export function createAgentService() {
         }
         return;
       }
-      if (body.name === "quote_rwa_route" || body.name === "execute_rwa_route") {
+      if (body.name === "quote_agni_route" || body.name === "execute_agni_route") {
         const args = (body.arguments ?? {}) as PlanRequest;
         const deployment = loadDeploymentConfig();
-        const { decision, amount, currentPositionId } = await buildAutopilotDecisionFromVaultState(args, deployment);
-        const execution = await executeRealRoute({ decision, amount, currentPositionId, userAddr: args.user });
+        const { decision, amount } = await buildAutopilotDecisionFromVaultState(args, deployment);
+        const execution = await executeRealRoute({ decision, amount, userAddr: args.user });
         res.end(JSON.stringify({ ok: true, result: execution }));
         return;
       }
@@ -1008,6 +651,68 @@ export function createAgentService() {
     }
 
     if (req.method !== "POST" || req.url !== "/autopilot/plan") {
+      if (req.method === "POST" && req.url === "/benchmark/outcome") {
+        try {
+          const body = (await readJson(req)) as OutcomeRecordRequest;
+          const decisionLog = body.decision.benchmark?.decisionLog;
+          const autopilotPolicy = body.decision.deployment?.contracts?.autopilotPolicy;
+          const protocolAddress = body.decision.plan.protocolAddress;
+          if (!decisionLog) {
+            res.statusCode = 400;
+            res.end(JSON.stringify({ ok: false, error: "DecisionLog address missing from decision proof payload" }));
+            return;
+          }
+
+          const result = await recordDecisionOutcome({
+            decisionLog,
+            decisionHash: body.decision.decisionHash,
+            executionTxHash: body.executionTxHash,
+            inputAmount: parseAmount(body.quotedInputAmount ?? body.decision.execution?.quotedInputAmount),
+            outputAmount: parseAmount(body.quotedOutputAmount ?? body.decision.execution?.quotedOutputAmount),
+            success: true,
+            metadataURI: `agni://swap/${body.decision.plan.strategyId}`,
+            chainId: body.decision.deployment?.chainId,
+          });
+          const policyExecution = autopilotPolicy && protocolAddress
+            ? await recordPolicyExecution({
+              autopilotPolicy,
+              user: body.decision.intent.user,
+              executor: (process.env.RELAYER_EXECUTOR_ADDRESS as `0x${string}` | undefined) ?? body.decision.intent.user,
+              protocol: protocolAddress,
+              strategyId: body.decision.plan.strategyId,
+              amount: BigInt(body.decision.intent.amount),
+              riskLevel: body.decision.plan.riskLevel,
+              lossAmount: 0n,
+              chainId: body.decision.deployment?.chainId,
+            })
+            : { enabled: false, txHash: null, note: "AutopilotPolicy address or protocol address missing", mode: "disabled" as const };
+
+          res.end(JSON.stringify({ ok: true, result, policyExecution }));
+        } catch (error) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : "failed to record outcome" }));
+        }
+        return;
+      }
+
+      if (req.method === "POST" && req.url === "/autopilot/execute-managed") {
+        try {
+          const body = (await readJson(req)) as PlanRequest;
+          const deployment = loadDeploymentConfig();
+          const { decision, amount } = await buildAutopilotDecisionFromVaultState(body, deployment);
+          const execution = await executeManagedRoute({
+            decision,
+            amount,
+            userAddr: body.user,
+          });
+          res.end(JSON.stringify({ ok: true, decision, execution, source: "agent-service" }));
+        } catch (error) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : "invalid request" }));
+        }
+        return;
+      }
+
       res.statusCode = 404;
       res.end(JSON.stringify({ ok: false, error: "not found" }));
       return;
@@ -1017,15 +722,13 @@ export function createAgentService() {
       const body = (await readJson(req)) as PlanRequest;
       logger.info({ user: body.user, amount: body.amount, execute: body.execute ?? false }, "autopilot plan requested");
       const deployment = loadDeploymentConfig();
-      const { decision, amount, currentPositionId } = await buildAutopilotDecisionFromVaultState(body, deployment);
+      const { decision, amount } = await buildAutopilotDecisionFromVaultState(body, deployment);
       const anchor = body.anchor === false ? { enabled: false, txHash: null, note: "anchor disabled by request" } : await anchorDecision(decision);
-      const shouldExecute =
-        body.execute && (decision.action.kind === "open" || decision.action.kind === "rebalance" || decision.action.kind === "close");
+      const shouldExecute = body.execute && decision.action.kind !== "hold";
       const execution = shouldExecute
         ? await executeRealRoute({
           decision,
           amount,
-          currentPositionId,
           userAddr: body.user,
         })
         : ({ enabled: false, mode: "disabled", note: "request execute=false", operation: null } as const);

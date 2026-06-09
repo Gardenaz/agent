@@ -10,7 +10,7 @@ const context: AgentContext = {
     contracts: {
       agentIdentity: "0x1111111111111111111111111111111111111111",
       decisionLog: "0x2222222222222222222222222222222222222222",
-      riskPolicy: "0x3333333333333333333333333333333333333333",
+      autopilotPolicy: "0x6666666666666666666666666666666666666666",
     },
   },
 };
@@ -30,7 +30,7 @@ describe("Gardena LangGraph agent", () => {
 
     const state = await graph.invoke({ intent: baseIntent, deployment: context.deployment });
 
-    assert.equal(state.plan?.strategyId, "steady-rwa-usdy");
+    assert.equal(state.plan?.strategyId, "agni-usdy-safe-swap");
     assert.equal(state.plan?.asset, "USDY");
     assert.equal(state.plan?.title, "Rice / Safe Harvest");
     assert.equal(state.policy?.status, "approved");

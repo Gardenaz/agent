@@ -41,11 +41,29 @@ function logNode(state: AgentGraphState): AgentGraphUpdate {
     throw new Error("Agent graph log node requires plan, policy, summary, and createdAt state");
   }
 
+  const erc8004 = {
+    agentId: "1",
+    registries: {
+      agentIdentity: state.deployment?.contracts.agentIdentity,
+      autopilotPolicy: state.deployment?.contracts.autopilotPolicy,
+    },
+  } as const;
+
+  const benchmark = {
+    decisionLog: state.deployment?.contracts.decisionLog,
+    status: "required",
+    anchorState: "pending",
+    outcomeState: "pending",
+    transparency: "live",
+  } as const;
+
   const decisionHash = hashDecision(
     JSON.stringify({
       intent: state.intent,
       plan: state.plan,
       policy: state.policy,
+      erc8004,
+      benchmark,
       deployment: state.deployment,
       createdAt: state.createdAt,
     }),
@@ -58,7 +76,25 @@ function logNode(state: AgentGraphState): AgentGraphUpdate {
     decisionHash,
     summary: state.summary,
     createdAt: state.createdAt,
+    execution: {
+      actionType: state.plan.actionType ?? "hold",
+      executionKind: state.plan.executionKind,
+      pair: state.plan.pair,
+      tokenIn: state.plan.tokenIn,
+      tokenOut: state.plan.tokenOut,
+      feeTier: state.plan.feeTier,
+      slippageBps: state.plan.slippageBps,
+      deadlineSeconds: state.plan.deadlineSeconds,
+      quotedInputAmount: state.intent.amount,
+    },
     deployment: state.deployment,
+    erc8004,
+    benchmark,
+    track: {
+      primary: "AI x RWA",
+      secondary: "Consumer & Viral DApps",
+      support: "Agentic Wallets & Economy",
+    },
   };
 
   return { decisionHash, decision };
