@@ -56,7 +56,7 @@ export async function prepareSwapExecution(params: {
   if (!hasAddress(meta.tokenIn) || !hasAddress(meta.tokenOut)) {
     return {
       status: "disabled",
-      note: "Swap route is missing live token addresses. Configure AGNI_USDY_TOKEN_ADDRESS or AGNI_METH_TOKEN_ADDRESS before executing this lane.",
+      note: "Swap route is missing live token addresses. Configure the token env for this lane before executing it.",
     };
   }
   if (!meta.feeTier || meta.slippageBps == null) {

@@ -108,6 +108,13 @@ function chainFor(chainId: number) {
   return mantleSepolia;
 }
 
+function readRpcUrl(chainId = 5003) {
+  if (chainId === 5000) {
+    return process.env.MANTLE_MAINNET_RPC_URL ?? process.env.MANTLE_RPC_URL ?? process.env.RPC_URL;
+  }
+  return process.env.MANTLE_RPC_URL ?? process.env.RPC_URL ?? process.env.MANTLE_MAINNET_RPC_URL;
+}
+
 function strategyIdToBytes32(strategyId: string): Hex {
   const bytes = Buffer.from(strategyId, "utf8").subarray(0, 32);
   return `0x${bytes.toString("hex").padEnd(64, "0")}` as Hex;
@@ -229,7 +236,7 @@ export async function anchorDecision(decision: AutopilotDecision): Promise<Ancho
 
   const account = privateKeyToAccount(privateKey);
   const chain = chainFor(decision.deployment?.chainId ?? mantleSepolia.id);
-  const rpcUrl = process.env.MANTLE_RPC_URL ?? process.env.RPC_URL;
+  const rpcUrl = readRpcUrl(decision.deployment?.chainId ?? mantleSepolia.id);
   const wallet = createWalletClient({ account, chain, transport: http(rpcUrl) });
   try {
     const txHash = await wallet.writeContract({
@@ -286,7 +293,7 @@ export async function recordDecisionOutcome(params: DecisionOutcomeRecordParams)
 
   const account = privateKeyToAccount(privateKey);
   const chain = chainFor(params.chainId ?? 5003);
-  const rpcUrl = process.env.MANTLE_RPC_URL ?? process.env.RPC_URL;
+  const rpcUrl = readRpcUrl(params.chainId ?? 5003);
   const wallet = createWalletClient({ account, chain, transport: http(rpcUrl) });
   try {
     const txHash = await wallet.writeContract({
@@ -346,7 +353,7 @@ export async function recordPolicyExecution(params: PolicyExecutionRecordParams)
 
   const account = privateKeyToAccount(privateKey);
   const chain = chainFor(params.chainId ?? 5003);
-  const rpcUrl = process.env.MANTLE_RPC_URL ?? process.env.RPC_URL;
+  const rpcUrl = readRpcUrl(params.chainId ?? 5003);
   const wallet = createWalletClient({ account, chain, transport: http(rpcUrl) });
   try {
     const txHash = await wallet.writeContract({
@@ -391,7 +398,7 @@ export async function relayRawTx(params: {
   if (!privateKey) throw new Error("RELAYER_PRIVATE_KEY required for raw tx relay");
   const account = privateKeyToAccount(privateKey);
   const chain = chainFor(params.chainId ?? 5003);
-  const rpcUrl = process.env.MANTLE_MAINNET_RPC_URL ?? process.env.MANTLE_RPC_URL ?? process.env.RPC_URL;
+  const rpcUrl = readRpcUrl(params.chainId ?? 5003);
   const wallet = createWalletClient({ account, chain, transport: http(rpcUrl) });
   const txHash = await wallet.sendTransaction({
     to: params.to,
@@ -413,7 +420,7 @@ export async function relayApproval(params: {
   if (!privateKey) throw new Error("RELAYER_PRIVATE_KEY required for approval");
   const account = privateKeyToAccount(privateKey);
   const chain = chainFor(params.chainId ?? 5003);
-  const rpcUrl = process.env.MANTLE_MAINNET_RPC_URL ?? process.env.MANTLE_RPC_URL ?? process.env.RPC_URL;
+  const rpcUrl = readRpcUrl(params.chainId ?? 5003);
   const wallet = createWalletClient({ account, chain, transport: http(rpcUrl) });
   const erc20ApproveAbi = [{ type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ name: "", type: "bool" }] }] as const;
   const txHash = await wallet.writeContract({

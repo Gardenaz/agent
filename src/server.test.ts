@@ -21,14 +21,14 @@ describe("Gardena agent HTTP service", () => {
   it("builds a beginner garden request from app request payload", () => {
     const request = buildGardenRequest({
       user,
-      message: "pemula mau aman dulu 1000 USDY",
+      message: "pemula mau aman dulu 1000 USDC",
       amount: "1000",
       riskPreference: 3,
       execute: true,
     });
 
     assert.equal(request.user, user);
-    assert.equal(request.message, "pemula mau aman dulu 1000 USDY");
+    assert.equal(request.message, "pemula mau aman dulu 1000 USDC");
     assert.equal(request.amount, "1000");
     assert.equal(request.userMaxRiskLevel, 3);
     assert.equal(request.execute, true);
@@ -153,7 +153,7 @@ describe("Gardena agent HTTP service", () => {
       assert.equal(json.result.simulation.crop, "Rice / Safe Harvest");
       assert.ok(json.result.simulation.potSlots.length > 0);
       assert.match(json.result.decision.decisionHash, /^0x[0-9a-f]{64}$/);
-      assert.match(json.result.beginnerExplanation, /beginner|safe|USDY/i);
+      assert.match(json.result.beginnerExplanation, /beginner|safe|USDC|stable/i);
     } finally {
       service.close();
     }

@@ -48,7 +48,7 @@ const opportunities: YieldOpportunity[] = [
     asset: "USDC",
     actionType: "swap",
     executionKind: "swap",
-    pair: "USDC/USDY",
+    pair: "USDT/USDC",
     expectedApyBps: 420,
     riskLevel: 1,
     liquidityUsd: 1_000_000,
@@ -61,10 +61,10 @@ const opportunities: YieldOpportunity[] = [
     strategyId: "growth-lp-usdc-meth",
     protocol: "Mantle Liquidity Route",
     protocolAddress: vaultAddress,
-    asset: "USDC/mETH",
+    asset: "USDT/WMNT",
     actionType: "addLiquidity",
     executionKind: "liquidity",
-    pair: "USDC/mETH",
+    pair: "USDT/WMNT",
     expectedApyBps: 980,
     riskLevel: 2,
     liquidityUsd: 800_000,
@@ -80,7 +80,7 @@ const opportunities: YieldOpportunity[] = [
     asset: "USDC",
     actionType: "addLiquidity",
     executionKind: "liquidity",
-    pair: "USDC/mETH",
+    pair: "USDC/WMNT",
     expectedApyBps: 2_100,
     riskLevel: 3,
     liquidityUsd: 250_000,
@@ -173,10 +173,10 @@ describe("Gardena autopilot LangGraph", () => {
     assert.equal(state.decision?.action.kind, "rebalanceLiquidity");
   });
 
-  it("defaults to AI x RWA opportunities with USDY and mETH consumer garden metadata", async () => {
+  it("defaults to AI x RWA opportunities with stablecoin and WMNT consumer garden metadata", async () => {
     const decision = await runAutopilotTick({
       ...baseIntent,
-      currentStrategyId: "steady-rwa-usdy",
+        currentStrategyId: "agni-usdc-safe-swap",
       policy: {
         ...baseIntent.policy,
         allowedProtocols: [vaultAddress],
@@ -187,8 +187,8 @@ describe("Gardena autopilot LangGraph", () => {
     const protocols = decision.market.opportunities.map((opportunity) => opportunity.protocol);
     const themes = decision.market.opportunities.map((opportunity) => opportunity.consumerTheme);
 
-    assert.ok(assets.includes("USDY"));
-    assert.ok(assets.includes("mETH"));
+    assert.ok(assets.includes("USDC"));
+    assert.ok(assets.includes("WMNT"));
     assert.ok(protocols.includes("Agni Swap Router"));
     assert.ok(protocols.includes("Agni Position Manager"));
     assert.ok(themes.includes("Rice / Safe Harvest"));
@@ -200,7 +200,7 @@ describe("Gardena autopilot LangGraph", () => {
   it("includes an AI advisor signal before deterministic policy enforcement", async () => {
     const decision = await runAutopilotTick({
       ...baseIntent,
-      currentStrategyId: "steady-rwa-usdy",
+        currentStrategyId: "agni-usdc-safe-swap",
       policy: {
         ...baseIntent.policy,
         allowedProtocols: [vaultAddress],

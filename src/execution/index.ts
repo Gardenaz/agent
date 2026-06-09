@@ -13,6 +13,13 @@ export type RealExecutionRequest = {
 
 type Operation = "swap" | "addLiquidity" | "removeLiquidity" | "rebalanceLiquidity";
 
+function readRpcUrl(chainId = 5003) {
+  if (chainId === 5000) {
+    return process.env.MANTLE_MAINNET_RPC_URL ?? process.env.MANTLE_RPC_URL ?? process.env.RPC_URL;
+  }
+  return process.env.MANTLE_RPC_URL ?? process.env.RPC_URL ?? process.env.MANTLE_MAINNET_RPC_URL;
+}
+
 type ExecutionApproval = {
   token: Address;
   spender: Address;
@@ -83,8 +90,9 @@ export async function executeRealRoute(request: RealExecutionRequest): Promise<R
     };
   }
 
-  const rpcUrl = process.env.MANTLE_RPC_URL ?? process.env.RPC_URL ?? process.env.MANTLE_MAINNET_RPC_URL;
-  const contracts = resolveAgniContracts(request.decision.deployment?.chainId);
+  const chainId = request.decision.deployment?.chainId ?? 5003;
+  const rpcUrl = readRpcUrl(chainId);
+  const contracts = resolveAgniContracts(chainId);
 
   if (operation === "swap") {
     const prepared = await prepareSwapExecution({
@@ -206,7 +214,7 @@ export async function executeManagedRoute(request: RealExecutionRequest): Promis
       chainId: request.decision.deployment?.chainId,
     });
 
-    const rpcUrl = process.env.MANTLE_MAINNET_RPC_URL ?? process.env.MANTLE_RPC_URL ?? process.env.RPC_URL;
+    const rpcUrl = readRpcUrl(request.decision.deployment?.chainId ?? 5003);
     if (rpcUrl) {
       const chainId = request.decision.deployment?.chainId ?? 5003;
       const publicClient = createPublicClient({

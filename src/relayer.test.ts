@@ -20,7 +20,7 @@ const policyParams = {
   user: "0x4444444444444444444444444444444444444444" as const,
   executor: "0x5555555555555555555555555555555555555555" as const,
   protocol: "0x6666666666666666666666666666666666666666" as const,
-  strategyId: "agni-usdy-safe-swap",
+  strategyId: "agni-usdc-safe-swap",
   amount: 1000n,
   riskLevel: 1 as const,
   lossAmount: 0n,
@@ -90,7 +90,7 @@ describe("Decision relayer outcome logging", () => {
     const calldata = buildPolicyExecutionCalldata(policyParams);
 
     assert.match(calldata, /^0x[0-9a-f]+$/);
-    assert.ok(calldata.includes("61676e692d757364792d736166652d73776170"));
+    assert.ok(calldata.includes("61676e692d757364632d736166652d73776170"));
   });
 
   it("returns prepared policy execution calldata when relayer key is missing", async () => {

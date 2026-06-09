@@ -1,4 +1,4 @@
-import { createPublicClient, http, isAddress } from "viem";
+import { createPublicClient, decodeFunctionResult, encodeFunctionData, http, isAddress } from "viem";
 import type { Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { mantle } from "viem/chains";
@@ -10,8 +10,8 @@ const DECISION_LOG_READ_ABI = [
     type: "function",
     name: "writers",
     stateMutability: "view",
-    inputs: [{ name: "", type: "address" }],
-    outputs: [{ name: "", type: "bool" }],
+    inputs: [{ name: "writer", type: "address" }],
+    outputs: [{ name: "allowed", type: "bool" }],
   },
 ] as const;
 
@@ -20,8 +20,8 @@ const AUTOPILOT_POLICY_READ_ABI = [
     type: "function",
     name: "authorizedCallers",
     stateMutability: "view",
-    inputs: [{ name: "", type: "address" }],
-    outputs: [{ name: "", type: "bool" }],
+    inputs: [{ name: "caller", type: "address" }],
+    outputs: [{ name: "allowed", type: "bool" }],
   },
 ] as const;
 
@@ -87,8 +87,11 @@ function chainFor(chainId: number) {
   return mantleSepolia;
 }
 
-function readRpcUrl() {
-  return process.env.MANTLE_MAINNET_RPC_URL ?? process.env.MANTLE_RPC_URL ?? process.env.RPC_URL ?? null;
+function readRpcUrl(chainId: number) {
+  if (chainId === 5000) {
+    return process.env.MANTLE_MAINNET_RPC_URL ?? process.env.RPC_URL ?? process.env.MANTLE_RPC_URL ?? null;
+  }
+  return process.env.MANTLE_RPC_URL ?? process.env.RPC_URL ?? process.env.MANTLE_MAINNET_RPC_URL ?? null;
 }
 
 function readOptionalAddress(value: string | undefined): Address | null {
@@ -115,11 +118,27 @@ async function readDecisionLogWriter(
       chain: chainFor(chainId),
       transport: http(rpcUrl),
     });
-    const authorized = await client.readContract({
-      address: decisionLog,
-      abi: DECISION_LOG_READ_ABI,
+    const abi = [
+      {
+        type: "function",
+        name: "writers",
+        stateMutability: "view",
+        inputs: [{ type: "address" }],
+        outputs: [{ type: "bool" }],
+      },
+    ] as const;
+    const { data } = await client.call({
+      to: decisionLog,
+      data: encodeFunctionData({
+        abi,
+        functionName: "writers",
+        args: [signer],
+      }),
+    });
+    const authorized = decodeFunctionResult({
+      abi,
       functionName: "writers",
-      args: [signer],
+      data: data ?? "0x",
     });
     return {
       authorized,
@@ -148,11 +167,27 @@ async function readPolicyCaller(
       chain: chainFor(chainId),
       transport: http(rpcUrl),
     });
-    const authorized = await client.readContract({
-      address: autopilotPolicy,
-      abi: AUTOPILOT_POLICY_READ_ABI,
+    const abi = [
+      {
+        type: "function",
+        name: "authorizedCallers",
+        stateMutability: "view",
+        inputs: [{ type: "address" }],
+        outputs: [{ type: "bool" }],
+      },
+    ] as const;
+    const { data } = await client.call({
+      to: autopilotPolicy,
+      data: encodeFunctionData({
+        abi,
+        functionName: "authorizedCallers",
+        args: [signer],
+      }),
+    });
+    const authorized = decodeFunctionResult({
+      abi,
       functionName: "authorizedCallers",
-      args: [signer],
+      data: data ?? "0x",
     });
     return {
       authorized,
@@ -171,7 +206,7 @@ export async function getAgentLiveReadiness(): Promise<AgentLiveReadiness> {
   const chainId = deployment?.chainId ?? Number(process.env.MANTLE_CHAIN_ID ?? 5003);
   const network = deployment?.network ?? (chainId === 5000 ? "mantle-mainnet" : "mantle-sepolia");
   const contracts = resolveAgniContracts(chainId);
-  const rpcUrl = readRpcUrl();
+  const rpcUrl = readRpcUrl(chainId);
   const relayerEnabled = process.env.RELAYER_ENABLED === "true";
   const relayerPrivateKey = process.env.RELAYER_PRIVATE_KEY;
   const signerAddress = deriveRelayerSigner(relayerPrivateKey);
@@ -228,8 +263,8 @@ export async function getAgentLiveReadiness(): Promise<AgentLiveReadiness> {
       swapRouter: contracts.swapRouter,
       quoterV2: contracts.quoterV2,
       nonfungiblePositionManager: contracts.nonfungiblePositionManager,
-      usdyTokenConfigured: isAddress(process.env.AGNI_USDY_TOKEN_ADDRESS ?? ""),
-      mEthTokenConfigured: isAddress(process.env.AGNI_METH_TOKEN_ADDRESS ?? ""),
+      usdyTokenConfigured: isAddress(process.env.AGNI_USDT_TOKEN_ADDRESS ?? "") && isAddress(process.env.AGNI_USDC_TOKEN_ADDRESS ?? ""),
+      mEthTokenConfigured: isAddress(process.env.AGNI_WMNT_TOKEN_ADDRESS ?? ""),
     },
     executionModes: {
       wallet: {

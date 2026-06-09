@@ -17,63 +17,63 @@ const context: AgentContext = {
 
 const market: YieldOpportunity[] = [
   {
-    id: "steady-rwa-usdy",
-    strategyId: "steady-rwa-usdy",
-    protocol: "Mantle RWA USDY Route",
+    id: "agni-usdc-safe-swap",
+    strategyId: "agni-usdc-safe-swap",
+    protocol: "Agni Stablecoin Route",
     protocolAddress: "0x9999999999999999999999999999999999999999",
-    asset: "USDY",
+    asset: "USDC",
     actionType: "swap",
     executionKind: "swap",
-    pair: "USDT/USDY",
+    pair: "USDT/USDC",
     expectedApyBps: 520,
     riskLevel: 1,
     liquidityUsd: 1_400_000,
     gasCostUsd: 0.05,
     confidence: 0.92,
-    marketCondition: "USDY RWA yield stable",
+    marketCondition: "stablecoin lane looks calm",
     consumerTheme: "Rice / Safe Harvest",
-    shareLabel: "Safe harvest powered by USDY",
+    shareLabel: "Safe harvest powered by USDC",
   },
   {
-    id: "growth-meth-yield",
-    strategyId: "growth-meth-yield",
-    protocol: "Mantle mETH Yield Route",
+    id: "agni-wmnt-growth-swap",
+    strategyId: "agni-wmnt-growth-swap",
+    protocol: "Agni WMNT Growth Route",
     protocolAddress: "0x9999999999999999999999999999999999999999",
-    asset: "mETH",
+    asset: "WMNT",
     actionType: "swap",
     executionKind: "swap",
-    pair: "USDT/mETH",
+    pair: "USDT/WMNT",
     expectedApyBps: 960,
     riskLevel: 2,
     liquidityUsd: 950_000,
     gasCostUsd: 0.08,
     confidence: 0.86,
-    marketCondition: "mETH staking yield improving",
+    marketCondition: "WMNT growth lane improving",
     consumerTheme: "Corn / Growth Field",
-    shareLabel: "Growth field compounding with mETH",
+    shareLabel: "Growth field compounding with WMNT",
   },
   {
-    id: "boost-rwa-meth-dynamic",
-    strategyId: "boost-rwa-meth-dynamic",
-    protocol: "Mantle Dynamic RWA Route",
+    id: "agni-usdc-wmnt-liquidity",
+    strategyId: "agni-usdc-wmnt-liquidity",
+    protocol: "Agni Dynamic LP Route",
     protocolAddress: "0x9999999999999999999999999999999999999999",
-    asset: "USDY/mETH",
+    asset: "USDC/WMNT",
     actionType: "addLiquidity",
     executionKind: "liquidity",
-    pair: "USDY/mETH",
+    pair: "USDC/WMNT",
     expectedApyBps: 1_760,
     riskLevel: 3,
     liquidityUsd: 420_000,
     gasCostUsd: 0.12,
     confidence: 0.72,
-    marketCondition: "dynamic RWA and mETH spread opportunity",
+    marketCondition: "dynamic stablecoin and WMNT spread opportunity",
     consumerTheme: "Chili / Boost Farm",
-    shareLabel: "Boost farm caught a spicy RWA spread",
+    shareLabel: "Boost farm caught a spicy stablecoin and WMNT spread",
   },
 ];
 
 describe("Gardena beginner garden agent", () => {
-  it("routes natural language safe investing into Rice USDY garden intent", async () => {
+  it("routes natural language safe investing into a steady stablecoin garden intent", async () => {
     const decision = await plantGarden(
       {
         message: "I am a beginner. Invest safely in real world yield.",
@@ -85,10 +85,10 @@ describe("Gardena beginner garden agent", () => {
     );
 
     assert.equal(decision.parsedIntent.crop, "steady");
-    assert.equal(decision.selectedOpportunity.strategyId, "steady-rwa-usdy");
-    assert.equal(decision.aiAdvisor.recommendedStrategyId, "steady-rwa-usdy");
+    assert.equal(decision.selectedOpportunity.strategyId, "agni-usdc-safe-swap");
+    assert.equal(decision.aiAdvisor.recommendedStrategyId, "agni-usdc-safe-swap");
     assert.equal(decision.gardenSimulation.crop, "Rice / Safe Harvest");
-    assert.match(decision.beginnerExplanation, /beginner|safe|USDY/i);
+    assert.match(decision.beginnerExplanation, /beginner|safe|USDC|stable/i);
   });
 
   it("maps bull market to sunny garden weather", async () => {
@@ -134,7 +134,7 @@ describe("Gardena beginner garden agent", () => {
         execute: false,
         userMaxRiskLevel: 1,
         mockAdvisor: {
-          recommendedStrategyId: "boost-rwa-meth-dynamic",
+          recommendedStrategyId: "agni-usdc-wmnt-liquidity",
           suggestedMaxRiskLevel: 3,
           suggestedMinImprovementBps: 10,
         },
@@ -143,7 +143,7 @@ describe("Gardena beginner garden agent", () => {
     );
 
     assert.equal(decision.effectivePolicy.maxRiskLevel, 1);
-    assert.equal(decision.selectedOpportunity.strategyId, "boost-rwa-meth-dynamic");
+    assert.equal(decision.selectedOpportunity.strategyId, "agni-usdc-wmnt-liquidity");
     assert.equal(decision.policy.status, "blocked");
     assert.match(decision.policy.reason, /risk/i);
   });
